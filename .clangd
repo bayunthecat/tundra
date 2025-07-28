@@ -1,0 +1,2 @@
+CompileFlags:
+  Add: [-I../../tp/glfw/glfw/include, -I../../tp/vulkan-sdk/vulkan-sdk/Include]
