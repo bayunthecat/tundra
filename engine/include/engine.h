@@ -1,8 +1,10 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
-#include "vulkan/vulkan.h"
+typedef struct Engine Engine;
 
-void createInstance(VkInstance *instance);
+Engine *makeEngine();
+
+void freeEngine(Engine *engine);
 
 #endif // !ENGINE_H

@@ -1,11 +1,9 @@
 #include "engine.h"
-#include "vulkan/vulkan_core.h"
 #include <stdio.h>
-#include <vulkan/vulkan.h>
 
 int main() {
-  VkInstance instance;
-  createInstance(&instance);
-  printf("Hello bazel\n");
+  Engine *e = makeEngine();
+  freeEngine(e);
+  printf("Success\n");
   return 0;
 }

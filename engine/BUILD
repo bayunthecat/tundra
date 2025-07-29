@@ -6,6 +6,7 @@ cc_library(
   deps = [
     "//tp/glfw:glfw_win", 
     "//tp/vulkan-sdk:vulkan_win",
+    "//tp/cglm:cglm",
   ],
   visibility = ["//visibility:public"],
 )
