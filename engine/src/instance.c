@@ -6,8 +6,6 @@
 #include <vulkan/vulkan.h>
 
 void createInstance(VkInstance *instance) {
-  printf("engineCreateInstance\n");
-  glfwInit();
   uint32_t extCount = 0;
   const char **extensions = glfwGetRequiredInstanceExtensions(&extCount);
   uint32_t layersCount = 1;
