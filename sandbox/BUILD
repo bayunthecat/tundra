@@ -5,5 +5,8 @@ cc_binary(
   deps = [
     "//engine:engine",
   ],
-  data = ["//tp/glfw:glfw_dll"],
+  data = [
+    "//tp/glfw:glfw_dll",
+    "//shaders:shaders",
+  ],
 )

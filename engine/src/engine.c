@@ -470,14 +470,16 @@ VkShaderModule createShaderModule(Engine *e, const char *filepath) {
 }
 
 void createGraphicsPipeline(Engine *e) {
-  VkShaderModule triVert = createShaderModule(e, "shaders/comp/tri.vert.spv");
+  VkShaderModule triVert =
+      createShaderModule(e, "shaders/compiled/tri.vert.spv");
   VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_VERTEX_BIT,
       .module = triVert,
       .pName = "main",
   };
-  VkShaderModule triFrag = createShaderModule(e, "shaders/comp/tri.frag.spv");
+  VkShaderModule triFrag =
+      createShaderModule(e, "shaders/compiled/tri.frag.spv");
   VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -614,6 +616,7 @@ void createGraphicsPipeline(Engine *e) {
 
 Engine *makeEngine() {
   Engine *e = malloc(sizeof(Engine));
+  e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   createGlfw(e);
   createInstance(&e->instance);
   createSurface(e);
@@ -656,6 +659,9 @@ void freeEngine(Engine *engine) {
   destroySwapchainImages(engine);
   vkDestroySurfaceKHR(engine->instance, engine->surface, NULL);
   vkDestroyRenderPass(engine->device, engine->renderPass, NULL);
+  vkDestroyPipelineLayout(engine->device, engine->pipelineLayout, NULL);
+  vkDestroyPipeline(engine->device, engine->pipeline, NULL);
+  vkDestroyDescriptorSetLayout(engine->device, engine->descriptorLayout, NULL);
   vkDestroyDevice(engine->device, NULL);
   vkDestroyInstance(engine->instance, NULL);
   glfwTerminate();

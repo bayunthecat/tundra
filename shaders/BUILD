@@ -1,5 +1,5 @@
 filegroup(
   name = "shaders",
-  srcs = ["src/comp/*.spv"],
+  srcs = glob(["compiled/*.spv"]),
   visibility = ["//visibility:public"],
 )
