@@ -241,6 +241,63 @@ void createSwapchain(Engine *e) {
   e->swapchainExtent = extent;
 }
 
+uint32_t findMemoryType(Engine *e, uint32_t typeFilter,
+                        VkMemoryPropertyFlags props) {
+  VkPhysicalDeviceMemoryProperties memProps = {};
+  vkGetPhysicalDeviceMemoryProperties(e->physicalDevice, &memProps);
+  for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+    if (typeFilter & (1 << i) &&
+        (memProps.memoryTypes[i].propertyFlags & props) == props) {
+      return i;
+    }
+  }
+  printf("unable to find suitable memory\n");
+  exit(1);
+}
+
+void createImage(Engine *e, uint32_t width, uint32_t height, uint32_t mipLevels,
+                 VkSampleCountFlagBits numSamples, VkFormat format,
+                 VkImageTiling tiling, VkImageUsageFlags usage,
+                 VkMemoryPropertyFlags props, VkImage *image,
+                 VkDeviceMemory *imageMemory) {
+  VkImageCreateInfo imageInfo = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+      .imageType = VK_IMAGE_TYPE_2D,
+      .mipLevels = mipLevels,
+      .samples = numSamples,
+      .extent =
+          {
+              .width = width,
+              .height = height,
+              .depth = 1,
+          },
+      .arrayLayers = 1,
+      .format = format,
+      .tiling = tiling,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+      .usage = usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+  if (vkCreateImage(e->device, &imageInfo, NULL, image) != VK_SUCCESS) {
+    printf("image creation failed\n");
+    exit(1);
+  }
+  VkMemoryRequirements memReq;
+  vkGetImageMemoryRequirements(e->device, *image, &memReq);
+
+  VkMemoryAllocateInfo allocInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = memReq.size,
+      .memoryTypeIndex = findMemoryType(e, memReq.memoryTypeBits,
+                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+  if (vkAllocateMemory(e->device, &allocInfo, NULL, imageMemory) !=
+      VK_SUCCESS) {
+    printf("failed to allocate image memory\n");
+    exit(1);
+  }
+  vkBindImageMemory(e->device, *image, *imageMemory, 0);
+}
+
 VkImageView createImageView(Engine *e, VkImage image, VkFormat format,
                             VkImageAspectFlags aspectFlags,
                             uint32_t mipLevels) {
@@ -281,7 +338,7 @@ void createImageViews(Engine *e) {
 }
 
 void createRenderPass(Engine *e) {
-  printf("createing render pass\n");
+  printf("creating render pass\n");
   VkAttachmentDescription colorAttachment = {
       .format = e->swapchainImageFormat,
       .samples = e->msaaSample,
@@ -363,6 +420,7 @@ void createRenderPass(Engine *e) {
 }
 
 void createDescriptorSetLayout(Engine *e) {
+  printf("creating descriptor set layout\n");
   VkDescriptorSetLayoutBinding uboLayoutBinding = {
       .binding = 0,
       .descriptorCount = 1,
@@ -612,6 +670,34 @@ void createGraphicsPipeline(Engine *e) {
   vkDestroyShaderModule(e->device, triVert, NULL);
 }
 
+void createCommandPool(Engine *e) {
+  printf("creating command pool\n");
+  VkCommandPoolCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+      .queueFamilyIndex = 0,
+  };
+  VkResult result =
+      vkCreateCommandPool(e->device, &info, NULL, &e->commandPool);
+  if (result != VK_SUCCESS) {
+    printf("failed to create command pool");
+    exit(1);
+  }
+}
+
+void createColorResources(Engine *e) {
+  printf("creating color resources\n");
+  VkFormat colorFormat = e->swapchainImageFormat;
+  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
+              e->msaaSample, colorFormat, VK_IMAGE_TILING_OPTIMAL,
+              VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->colorImage,
+              &e->colorImageMemory);
+  e->colorImageView = createImageView(e, e->colorImage, colorFormat,
+                                      VK_IMAGE_ASPECT_COLOR_BIT, 1);
+}
+
 // TODO mess end
 
 Engine *makeEngine() {
@@ -628,8 +714,8 @@ Engine *makeEngine() {
   createRenderPass(e);
   createDescriptorSetLayout(e);
   createGraphicsPipeline(e);
-  // create command pool
-  // create color resources
+  createCommandPool(e);
+  createColorResources(e);
   // create depth resources
   // create framebuffers
   // create texture image
@@ -654,14 +740,22 @@ void destroySwapchainImages(Engine *e) {
   free(e->swapchainImageViews);
 }
 
+void destroyColorResources(Engine *e) {
+  vkDestroyImageView(e->device, e->colorImageView, NULL);
+  vkDestroyImage(e->device, e->colorImage, NULL);
+  vkFreeMemory(e->device, e->colorImageMemory, NULL);
+}
+
 void freeEngine(Engine *engine) {
   vkDestroySwapchainKHR(engine->device, engine->swapchain, NULL);
   destroySwapchainImages(engine);
+  destroyColorResources(engine);
   vkDestroySurfaceKHR(engine->instance, engine->surface, NULL);
   vkDestroyRenderPass(engine->device, engine->renderPass, NULL);
   vkDestroyPipelineLayout(engine->device, engine->pipelineLayout, NULL);
   vkDestroyPipeline(engine->device, engine->pipeline, NULL);
   vkDestroyDescriptorSetLayout(engine->device, engine->descriptorLayout, NULL);
+  vkDestroyCommandPool(engine->device, engine->commandPool, NULL);
   vkDestroyDevice(engine->device, NULL);
   vkDestroyInstance(engine->instance, NULL);
   glfwTerminate();
