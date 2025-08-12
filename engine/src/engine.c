@@ -698,6 +698,49 @@ void createColorResources(Engine *e) {
                                       VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
 
+void createDepthResources(Engine *e) {
+  printf("creating depth resources\n");
+  VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
+  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
+              e->msaaSample, depthFormat, VK_IMAGE_TILING_OPTIMAL,
+              VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->depthImage,
+              &e->depthImageMemory);
+  e->depthImageView = createImageView(e, e->depthImage, depthFormat,
+                                      VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+}
+
+void createFramebuffers(Engine *e) {
+  printf("creating framebuffers\n");
+  e->framebuffers = malloc(sizeof(VkFramebuffer) * e->imageCount);
+  if (e->framebuffers == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  for (uint32_t i = 0; i < e->imageCount; i++) {
+    VkImageView attachments[] = {
+        e->colorImageView,
+        e->depthImageView,
+        e->swapchainImageViews[i],
+    };
+    VkFramebufferCreateInfo framebufferInfo = {
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass = e->renderPass,
+        .attachmentCount = 3,
+        .pAttachments = attachments,
+        .width = e->swapchainExtent.width,
+        .height = e->swapchainExtent.height,
+        .layers = 1,
+    };
+    VkResult result = vkCreateFramebuffer(e->device, &framebufferInfo, NULL,
+                                          &e->framebuffers[i]);
+    if (result != VK_SUCCESS) {
+      printf("failed to create framebuffer");
+      exit(1);
+    }
+  }
+}
+
 // TODO mess end
 
 Engine *makeEngine() {
@@ -716,8 +759,8 @@ Engine *makeEngine() {
   createGraphicsPipeline(e);
   createCommandPool(e);
   createColorResources(e);
-  // create depth resources
-  // create framebuffers
+  createDepthResources(e);
+  createFramebuffers(e);
   // create texture image
   // create texture image views
   // create texture sampler
@@ -746,10 +789,25 @@ void destroyColorResources(Engine *e) {
   vkFreeMemory(e->device, e->colorImageMemory, NULL);
 }
 
+void destroyDepthResources(Engine *e) {
+  vkDestroyImageView(e->device, e->depthImageView, NULL);
+  vkDestroyImage(e->device, e->depthImage, NULL);
+  vkFreeMemory(e->device, e->depthImageMemory, NULL);
+}
+
+void destroyFramebuffers(Engine *e) {
+  for (uint32_t i = 0; i < e->imageCount; i++) {
+    vkDestroyFramebuffer(e->device, e->framebuffers[i], NULL);
+  }
+  free(e->framebuffers);
+}
+
 void freeEngine(Engine *engine) {
   vkDestroySwapchainKHR(engine->device, engine->swapchain, NULL);
   destroySwapchainImages(engine);
   destroyColorResources(engine);
+  destroyDepthResources(engine);
+  destroyFramebuffers(engine);
   vkDestroySurfaceKHR(engine->instance, engine->surface, NULL);
   vkDestroyRenderPass(engine->device, engine->renderPass, NULL);
   vkDestroyPipelineLayout(engine->device, engine->pipelineLayout, NULL);
