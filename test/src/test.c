@@ -2,13 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+typedef struct {
+  test fn;
+  char *fnName;
+  char *status;
+  char *reason;
+} TestCase;
+
 struct TestSuite {
   char *name;
-  // TODO combine that into a separate struct?
-  test *testFns;
-  char **testFnNames;
-  char **statuses;
-  char **reasons;
+  TestCase *cases;
   int testFnCount;
   int capacity;
   int failCount;
@@ -29,25 +32,10 @@ TestSuite *testSuiteMake(char *name) {
   s->failCount = 0;
   s->name = name;
   s->capacity = 20;
-  s->statuses = malloc(sizeof(char *) * s->capacity);
-  if (!s->statuses) {
-    fprintf(stderr, "Failed to allocate test suite statuses\n");
-    exit(1);
-  }
-  s->testFnNames = malloc(sizeof(char *) * s->capacity);
-  if (!s->statuses) {
-    fprintf(stderr, "Failed to allocate test suite function names\n");
-    exit(1);
-  }
-  s->testFns = malloc(sizeof(test) * s->capacity);
-  if (!s->statuses) {
-    fprintf(stderr, "Failed to allocate test suite functions\n");
-    exit(1);
-  }
-  s->reasons = malloc(sizeof(char *) * s->capacity);
-  if (!s->statuses) {
-    fprintf(stderr, "Failed to allocate test suite reasons\n");
-    exit(1);
+
+  s->cases = malloc(sizeof(TestCase) * s->capacity);
+  if (!s->cases) {
+    fprintf(stderr, "Failed to allocate test suite cases");
   }
   return s;
 }
@@ -57,10 +45,11 @@ void run(TestSuite *s) {
   TestRun run;
   run.s = s;
   for (int i = 0; i < s->testFnCount; i++) {
-    char *n = s->testFnNames[i];
+    TestCase *c = &s->cases[i];
+    char *n = s->cases[i].fnName;
     run.idx = i;
-    s->testFns[i](&run);
-    printf("%s: %s %s\n", s->statuses[i], s->testFnNames[i], s->reasons[i]);
+    s->cases[i].fn(&run);
+    printf("%s: %s %s\n", c->status, c->fnName, c->reason);
   }
   int pass = s->testFnCount - s->failCount;
   printf("\n%d out of %d tests PASS\n", pass, s->testFnCount);
@@ -72,23 +61,22 @@ void registerFn(TestSuite *s, char *name, test fn) {
     printf("Exceeds suite capacity of %d\n", s->capacity);
     exit(1);
   }
-  s->statuses[idx] = "PASS";
-  s->testFnNames[idx] = name;
-  s->reasons[idx] = "";
-  s->testFns[idx] = fn;
+  TestCase *c = &s->cases[idx];
+  c->status = "PASS";
+  c->fnName = name;
+  c->reason = "";
+  c->fn = fn;
   s->testFnCount++;
 }
 
 void fail(TestRun *r, char *reason) {
-  r->s->statuses[r->idx] = "FAIL";
-  r->s->reasons[r->idx] = reason;
+  TestCase *c = &r->s->cases[r->idx];
+  c->status = "FAIL";
+  c->reason = reason;
   r->s->failCount++;
 }
 
 void testSuiteFree(TestSuite *s) {
-  free(s->testFns);
-  free(s->testFnNames);
-  free(s->statuses);
-  free(s->reasons);
+  free(s->cases);
   free(s);
 }
