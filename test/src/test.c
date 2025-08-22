@@ -53,15 +53,17 @@ TestSuite *testSuiteMake(char *name) {
 }
 
 void run(TestSuite *s) {
-  printf("=== %s ===\n", s->name);
+  printf("===== %s =====\n\n", s->name);
   TestRun run;
   run.s = s;
   for (int i = 0; i < s->testFnCount; i++) {
     char *n = s->testFnNames[i];
     run.idx = i;
     s->testFns[i](&run);
-    printf("%s: %s\n", s->statuses[i], s->testFnNames[i]);
+    printf("%s: %s %s\n", s->statuses[i], s->testFnNames[i], s->reasons[i]);
   }
+  int pass = s->testFnCount - s->failCount;
+  printf("\n%d out of %d tests PASS\n", pass, s->testFnCount);
 }
 
 void registerFn(TestSuite *s, char *name, test fn) {
@@ -72,6 +74,7 @@ void registerFn(TestSuite *s, char *name, test fn) {
   }
   s->statuses[idx] = "PASS";
   s->testFnNames[idx] = name;
+  s->reasons[idx] = "";
   s->testFns[idx] = fn;
   s->testFnCount++;
 }
