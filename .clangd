@@ -1,8 +1,0 @@
-CompileFlags:
-  Add: [
-    -I../../tp/glfw/glfw/include, 
-    -I../../tp/vulkan-sdk/vulkan-sdk/Include, 
-    -I../../tp/cglm/src,
-    -I../include, 
-    -I../../engine/include, 
-  ]

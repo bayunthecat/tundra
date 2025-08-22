@@ -1,0 +1,27 @@
+[
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Icollections/slice/include -c collections/slice/src/slice.c -o build/collections/slice/src/slice.o",
+    "file": "collections/slice/src/slice.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Icollections/slice/include -Itest/include -c collections/slice/tests/runner.c -o /build/collections/slice/tests/runner.o",
+    "file": "collections/slice/test/runner.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Icollections/map/include -c collections/map/src/slice.c -o build/collections/map/src/slice.o",
+    "file": "collections/map/src/map.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Icollections/map/include -c collections/map/tests/runner.c -o /build/collections/map/tests/runner.o",
+    "file": "collections/map/test/runner.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Itest/include -c test/src/slice.c -o build/test/src/slice.o",
+    "file": "test/src/map.c"
+  }
+]

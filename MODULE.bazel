@@ -1,4 +1,0 @@
-module(
-  name = "tundra",
-  version = "0.0.1",
-)
