@@ -2,17 +2,17 @@
 #include "test.h"
 #include <string.h>
 
-void testSliceNominal(TestSuite *su) {
+void testSliceNominal(TestRun *r) {
   Slice *s = sliceMake();
   sliceAppend(s, "hello");
   char *val = sliceGet(s, 0);
   if (strcmp(val, "hello") != 0) {
-    fail(su, "Error getting the value from the slice");
+    fail(r, "Error getting the value from the slice");
   }
   sliceFree(s);
 }
 
-void testSliceGrow(TestSuite *su) {
+void testSliceGrow(TestRun *r) {
   int len = 100;
   Slice *s = sliceMake();
   for (int i = 0; i < len; i++) {
@@ -20,7 +20,7 @@ void testSliceGrow(TestSuite *su) {
   }
   int newLen = sliceLen(s);
   if (newLen != len) {
-    fail(su, "want one, got another");
+    fail(r, "want one, got another");
   }
   sliceFree(s);
 }

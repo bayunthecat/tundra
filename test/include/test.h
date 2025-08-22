@@ -3,7 +3,9 @@
 
 typedef struct TestSuite TestSuite;
 
-typedef void (*test)(TestSuite *);
+typedef struct TestRun TestRun;
+
+typedef void (*test)(TestRun *);
 
 TestSuite *testSuiteMake(char *name);
 
@@ -11,7 +13,7 @@ void testSuiteFree(TestSuite *s);
 
 void registerFn(TestSuite *s, char *name, test);
 
-void fail(TestSuite *s, char *reason);
+void fail(TestRun *s, char *reason);
 
 void run(TestSuite *s);
 

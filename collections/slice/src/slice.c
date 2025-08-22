@@ -14,8 +14,7 @@ void grow(Slice *slice) {
   slice->cap = slice->cap * 1.5;
   void **newStore = realloc(slice->store, sizeof(void *) * slice->cap);
   if (!newStore) {
-    // TODO pretty bad error handing
-    printf("realloc failed");
+    printf("Failed to reallocate slice store");
     exit(1);
   }
   slice->store = newStore;
@@ -28,7 +27,6 @@ void sliceAppend(Slice *slice, void *v) {
   }
   slice->store[nIdx] = v;
   slice->len++;
-  slice->len++;
 }
 
 void *sliceGet(Slice *s, unsigned int index) {
@@ -40,6 +38,10 @@ void *sliceGet(Slice *s, unsigned int index) {
 
 Slice *sliceMake() {
   Slice *s = malloc(sizeof(Slice));
+  if (!s) {
+    fprintf(stderr, "Failed to allocate slice");
+    exit(1);
+  }
   s->len = 0;
   s->cap = 10;
   s->store = malloc(sizeof(void *) * s->cap);
