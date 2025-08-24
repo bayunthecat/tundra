@@ -12,7 +12,7 @@ typedef struct {
 struct TestSuite {
   char *name;
   TestCase *cases;
-  int testFnCount;
+  int caseCount;
   int capacity;
   int failCount;
 };
@@ -28,7 +28,7 @@ TestSuite *testSuiteMake(char *name) {
     fprintf(stderr, "Failed to allocate TestSuite");
     exit(1);
   }
-  s->testFnCount = 0;
+  s->caseCount = 0;
   s->failCount = 0;
   s->name = name;
   s->capacity = 20;
@@ -41,32 +41,36 @@ TestSuite *testSuiteMake(char *name) {
 }
 
 void run(TestSuite *s) {
-  printf("===== %s =====\n\n", s->name);
+  printf("===== %s =====\n", s->name);
   TestRun run;
   run.s = s;
-  for (int i = 0; i < s->testFnCount; i++) {
+  for (int i = 0; i < s->caseCount; i++) {
     TestCase *c = &s->cases[i];
     char *n = s->cases[i].fnName;
     run.idx = i;
     s->cases[i].fn(&run);
     printf("%s: %s %s\n", c->status, c->fnName, c->reason);
   }
-  int pass = s->testFnCount - s->failCount;
-  printf("\n%d out of %d tests PASS\n", pass, s->testFnCount);
+  int pass = s->caseCount - s->failCount;
+  printf("\n%d out of %d tests PASS\n", pass, s->caseCount);
 }
 
 void registerFn(TestSuite *s, char *name, test fn) {
-  int idx = s->testFnCount;
+  int idx = s->caseCount;
   if (idx >= s->capacity) {
-    printf("Exceeds suite capacity of %d\n", s->capacity);
-    exit(1);
+    int newCap = s->capacity * 1.5;
+    TestCase *reCase = realloc(s->cases, newCap);
+    if (!reCase) {
+      fprintf(stderr, "Failed to reallocated test suite cases");
+      exit(1);
+    }
   }
   TestCase *c = &s->cases[idx];
   c->status = "PASS";
   c->fnName = name;
   c->reason = "";
   c->fn = fn;
-  s->testFnCount++;
+  s->caseCount++;
 }
 
 void fail(TestRun *r, char *reason) {
