@@ -1,14 +1,27 @@
 #ifndef PEON_H
 #define PEON_H
 
-#include "slice.h"
+typedef struct PeonOpts {
+  char **skipDirs;
+} PeonOpts;
 
 typedef struct PeonTarget {
   char *path;
-  Slice *srcs;
-  Slice *includes;
-  Slice *flags;
-  Slice *tests;
+
+  char **srcs;
+  int srcCount;
+
+  char **includes;
+  int includeCount;
+
+  char **flags;
+  int flagCount;
+
+  char **tests;
+  int testCount;
+
 } PeonTarget;
+
+void parseRoot(char *root, PeonTarget *targets, int *targetCount);
 
 #endif // !PEON_H
