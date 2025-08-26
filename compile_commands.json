@@ -23,5 +23,10 @@
     "directory": "/home/vadym/workspace/tundra",
     "command": "gcc -Itest/include -c test/src/slice.c -o build/test/src/slice.o",
     "file": "test/src/map.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Icollections/slice/include -Ipeon/include -c peon/src/main.c -o /build/peon/src/main.o",
+    "file": "peon/src/main.c"
   }
 ]
