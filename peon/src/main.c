@@ -5,13 +5,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-enum DirType {
-  SRC,
-  INCLUDE,
-  TEST,
-  ROOT,
-};
-
 int main(int argc, char **argv) {
   if (argc <= 1 || argc >= 3) {
     printf("Usage: %s dir\n", argv[0]);

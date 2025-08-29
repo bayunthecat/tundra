@@ -27,6 +27,16 @@
   {
     "directory": "/home/vadym/workspace/tundra",
     "command": "gcc -Icollections/slice/include -Ipeon/include -c peon/src/main.c -o /build/peon/src/main.o",
-    "file": "peon/src/main.c"
+    "file": "peon/src/runner.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Iengine/include -Istb/image -Itinyobj -c engine/src/engine.c engine/src/instance.c -o /build/engine/src/engine.o",
+    "file": "engine/src/engine.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Iengine/include -c engine/src/engine.c engine/src/instance.c sandbox/src/main.c -o /build/sandbox/src/sandbox.o",
+    "file": "sandbox/src/main.c"
   }
 ]

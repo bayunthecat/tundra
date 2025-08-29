@@ -1,5 +1,10 @@
+#include <string.h>
+#define STB_IMAGE_IMPLEMENTATION
+#define GLFW_INCLUDE_VULKAN
+#define TINYOBJ_LOADER_C_IMPLEMENTATION
 #include "engine.h"
-#include "instance.h"
+#include "stb_image.h"
+#include "tinyobj_loader_c.h"
 #include <GLFW/glfw3.h>
 #include <cglm/affine-mat.h>
 #include <cglm/affine.h>
@@ -8,6 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
@@ -97,15 +103,13 @@ struct Engine {
 
   VkDeviceMemory modelBufferMemory;
 
-  vec3 *modelVerts;
+  Vertex *modelVertices;
 
-  uint32_t modelVertsNum;
+  int modelVerticesNum;
 
   vec2 *texCoords;
 
   uint32_t numTexCoords;
-
-  int modelVerticesNum;
 
   uint32_t *modelIndices;
 
@@ -122,15 +126,50 @@ struct Engine {
   VkDeviceMemory colorImageMemory;
 
   VkImageView colorImageView;
+
+  uint32_t mipLevels;
+
+  clock_t start;
 };
 
 // TODO mess
+
+void createInstance(VkInstance *instance) {
+  uint32_t extCount = 0;
+  const char **extensions = glfwGetRequiredInstanceExtensions(&extCount);
+  uint32_t layersCount = 1;
+  const char **layers = (const char *[]){"VK_LAYER_KHRONOS_validation"};
+  printf("extension count: %d\n", extCount);
+  for (int i = 0; i < extCount; i++) {
+    printf("ext: %d, %s\n", i, extensions[i]);
+  }
+  VkApplicationInfo appInfo = {
+      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+      .apiVersion = VK_API_VERSION_1_4,
+      .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+      .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+  };
+  VkInstanceCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pApplicationInfo = &appInfo,
+      .enabledExtensionCount = extCount,
+      .ppEnabledExtensionNames = extensions,
+      .enabledLayerCount = layersCount,
+      .ppEnabledLayerNames = layers,
+  };
+  VkResult result = vkCreateInstance(&info, NULL, instance);
+  if (result != VK_SUCCESS) {
+    printf("failed to create vulkan instance %d\n", result);
+    exit(1);
+  }
+}
 
 void createGlfw(Engine *e) {
   glfwInit();
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-  e->window = glfwCreateWindow(800, 600, "Hello bazelized Vulkan", NULL, NULL);
+  glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+  e->window = glfwCreateWindow(800, 600, "Hello Vulkan", NULL, NULL);
 }
 
 void createSurface(Engine *e) {
@@ -490,10 +529,9 @@ VkVertexInputAttributeDescription getTextureAttrDesc() {
 }
 
 void *load(const char *filepath, size_t *size) {
-  FILE *file = NULL;
-  int ret = fopen_s(&file, filepath, "rb");
-  if (ret != 0 || !file) {
-    fprintf(stderr, "Failed to open file: %s, ret: %d\n", filepath, ret);
+  FILE *file = fopen(filepath, "rb");
+  if (!file) {
+    fprintf(stderr, "Failed to open file: %s\n", filepath);
     perror("");
     exit(1);
   }
@@ -741,6 +779,701 @@ void createFramebuffers(Engine *e) {
   }
 }
 
+void createBuffer(Engine *e, VkDeviceSize size, VkBufferUsageFlags usage,
+                  VkMemoryPropertyFlags props, VkBuffer *buffer,
+                  VkDeviceMemory *memory) {
+  VkBufferCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = size,
+      .usage = usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+  if (vkCreateBuffer(e->device, &info, NULL, buffer) != VK_SUCCESS) {
+    printf("error creating buffer\n");
+    exit(1);
+  }
+  VkMemoryRequirements memReq;
+  vkGetBufferMemoryRequirements(e->device, *buffer, &memReq);
+
+  VkMemoryAllocateInfo allocInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = memReq.size,
+      .memoryTypeIndex = findMemoryType(e, memReq.memoryTypeBits, props),
+  };
+  if (vkAllocateMemory(e->device, &allocInfo, NULL, memory) != VK_SUCCESS) {
+    printf("error allocating memory\n");
+    exit(1);
+  };
+  vkBindBufferMemory(e->device, *buffer, *memory, 0);
+}
+
+VkCommandBuffer beginSingleTimeCommands(Engine *e) {
+  VkCommandBufferAllocateInfo allocInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandPool = e->commandPool,
+      .commandBufferCount = 1,
+  };
+  VkCommandBuffer commandBuffer;
+  vkAllocateCommandBuffers(e->device, &allocInfo, &commandBuffer);
+  VkCommandBufferBeginInfo beginInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  vkBeginCommandBuffer(commandBuffer, &beginInfo);
+  return commandBuffer;
+}
+
+void endSingleTimeCommands(Engine *e, VkCommandBuffer commandBuffer) {
+  vkEndCommandBuffer(commandBuffer);
+  VkSubmitInfo submitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &commandBuffer,
+  };
+  vkQueueSubmit(e->queue, 1, &submitInfo, VK_NULL_HANDLE);
+  vkQueueWaitIdle(e->queue);
+  vkFreeCommandBuffers(e->device, e->commandPool, 1, &commandBuffer);
+}
+
+void transitionImageLayout(Engine *e, VkImage image, VkFormat format,
+                           VkImageLayout oldLayout, VkImageLayout newLayout,
+                           uint32_t mipLevels) {
+  VkCommandBuffer cmdBuff = beginSingleTimeCommands(e);
+  VkImageMemoryBarrier barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+      .oldLayout = oldLayout,
+      .newLayout = newLayout,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .image = image,
+      .subresourceRange = {
+          .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+          .baseMipLevel = 0,
+          .levelCount = mipLevels,
+          .baseArrayLayer = 0,
+          .layerCount = 1,
+      }};
+  VkPipelineStageFlags sourceStage;
+  VkPipelineStageFlags destinationStage;
+  if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+      newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
+             newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+  } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
+             newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                            VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+  } else {
+    printf("unsupported ransistion\n");
+    exit(1);
+  }
+  vkCmdPipelineBarrier(cmdBuff, sourceStage, destinationStage, 0, 0, NULL, 0,
+                       NULL, 1, &barrier);
+  endSingleTimeCommands(e, cmdBuff);
+}
+
+void copyBufferToImage(Engine *e, VkBuffer buffer, VkImage image,
+                       uint32_t width, uint32_t height) {
+  VkCommandBuffer cmdBuff = beginSingleTimeCommands(e);
+  VkBufferImageCopy region = {
+      .bufferOffset = 0,
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageOffset = {0, 0, 0},
+      .imageExtent = {width, height, 1},
+      .imageSubresource =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .mipLevel = 0,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+          },
+  };
+  vkCmdCopyBufferToImage(cmdBuff, buffer, image,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+  endSingleTimeCommands(e, cmdBuff);
+}
+
+void generateMipmaps(Engine *e, VkImage image, uint32_t texWidth,
+                     uint32_t texHeight, uint32_t mipLevels) {
+  printf("generateMipmaps\n");
+  // Skip checking physical device format capabilities
+  VkCommandBuffer commandBuffer = beginSingleTimeCommands(e);
+  VkImageMemoryBarrier barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+      .image = image,
+      .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+              .levelCount = 1,
+          },
+  };
+  uint32_t mipWidth = texWidth;
+  uint32_t mipHeight = texHeight;
+  for (uint32_t i = 1; i < mipLevels; i++) {
+    printf("mipHeight %d, mipWidth: %d\n", mipHeight, mipWidth);
+    barrier.subresourceRange.baseMipLevel = i - 1;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1,
+                         &barrier);
+    VkImageBlit blit = {
+        .srcOffsets[0] = {0, 0, 0},
+        .srcOffsets[1] = {mipWidth, mipHeight, 1},
+        .srcSubresource =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = i - 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        .dstOffsets[0] = {0, 0, 0},
+        .dstOffsets[1] =
+            {
+                mipWidth > 1 ? mipWidth / 2 : 1,
+                mipHeight > 1 ? mipHeight / 2 : 1,
+                1,
+            },
+        .dstSubresource =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = i,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+    };
+    vkCmdBlitImage(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                   VK_FILTER_LINEAR);
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0,
+                         NULL, 1, &barrier);
+    if (mipWidth > 1) {
+      mipWidth /= 2;
+    }
+    if (mipHeight > 1) {
+      mipHeight /= 2;
+    }
+  }
+  barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+  barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+  barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0,
+                       NULL, 1, &barrier);
+  endSingleTimeCommands(e, commandBuffer);
+}
+
+void createTextureImage(Engine *e) {
+  printf("creating texture image\n");
+  int texWidth, texHeight, texChannels;
+  stbi_uc *pixels = stbi_load("assets/viking_room.png", &texWidth, &texHeight,
+                              &texChannels, STBI_rgb_alpha);
+  e->mipLevels = ((uint32_t)floor(log2(fmax(texWidth, texHeight)))) + 1;
+  VkDeviceSize dSize = texWidth * texHeight * 4;
+  VkBuffer stage;
+  VkDeviceMemory stageMem;
+  createBuffer(e, dSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+               &stage, &stageMem);
+  void *data;
+  vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
+  memcpy(data, pixels, dSize);
+  vkUnmapMemory(e->device, stageMem);
+  free(pixels);
+
+  createImage(e, texWidth, texHeight, e->mipLevels, VK_SAMPLE_COUNT_1_BIT,
+              VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+              &e->textureImage, &e->textureMem);
+  transitionImageLayout(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
+                        VK_IMAGE_LAYOUT_UNDEFINED,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
+  copyBufferToImage(e, stage, e->textureImage, texWidth, texHeight);
+  generateMipmaps(e, e->textureImage, texWidth, texHeight, e->mipLevels);
+}
+
+void createTextureImageView(Engine *e) {
+  printf("creating texture image view\n");
+  e->textureImageView =
+      createImageView(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
+                      VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels);
+}
+
+void createTextureSampler(Engine *e) {
+  printf("creating texture sampler\n");
+  VkPhysicalDeviceProperties props = {};
+  vkGetPhysicalDeviceProperties(e->physicalDevice, &props);
+  VkSamplerCreateInfo samplerInfo = {
+      .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+      .magFilter = VK_FILTER_LINEAR,
+      .minFilter = VK_FILTER_LINEAR,
+      .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+      .anisotropyEnable = VK_TRUE,
+      .maxAnisotropy = props.limits.maxSamplerAnisotropy,
+      .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+      .unnormalizedCoordinates = VK_FALSE,
+      .compareEnable = VK_FALSE,
+      .compareOp = VK_COMPARE_OP_ALWAYS,
+      .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      .minLod = 0.0f,
+      .maxLod = (float)e->mipLevels,
+      .mipLodBias = 0.0f,
+  };
+  if (vkCreateSampler(e->device, &samplerInfo, NULL, &e->textureSampler) !=
+      VK_SUCCESS) {
+    printf("error creating sampler\n");
+    exit(1);
+  }
+}
+
+void createUniformBuffers(Engine *e) {
+  printf("creating uniform buffers\n");
+  VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+  e->uniformBuffers = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
+  if (e->uniformBuffers == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  e->uniformBuffersMemoryList =
+      malloc(sizeof(VkDeviceMemory) * MAX_FRAMES_IN_FLIGHT);
+  if (e->uniformBuffersMemoryList == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  e->uniformBuffersMapped = malloc(sizeof(void *) * MAX_FRAMES_IN_FLIGHT);
+  if (e->uniformBuffersMapped == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    createBuffer(e, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 &e->uniformBuffers[i], &e->uniformBuffersMemoryList[i]);
+    vkMapMemory(e->device, e->uniformBuffersMemoryList[i], 0, bufferSize, 0,
+                &e->uniformBuffersMapped[i]);
+  }
+}
+
+void createDescriptorPool(Engine *e) {
+  printf("creating descriptor pool\n");
+  VkDescriptorPoolSize poolSize = {
+      .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+      .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+  };
+  VkDescriptorPoolSize samplerPoolSize = {
+      .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+      .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+  };
+  VkDescriptorPoolSize poolSizes[] = {
+      poolSize,
+      samplerPoolSize,
+  };
+  VkDescriptorPoolCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+      .poolSizeCount = 2,
+      .pPoolSizes = poolSizes,
+      .maxSets = MAX_FRAMES_IN_FLIGHT,
+  };
+  if (vkCreateDescriptorPool(e->device, &info, NULL, &e->descriptorPool) !=
+      VK_SUCCESS) {
+    printf("failed create descriptor pool\n");
+    exit(1);
+  };
+}
+
+void createDescriptorSets(Engine *e) {
+  printf("creating descriptor sets\n");
+  VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
+  for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    layouts[i] = e->descriptorLayout;
+  }
+  e->descriptorSets = malloc(sizeof(VkDescriptorSet) * MAX_FRAMES_IN_FLIGHT);
+  if (e->descriptorSets == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  VkDescriptorSetAllocateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+      .descriptorPool = e->descriptorPool,
+      .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
+      .pSetLayouts = layouts,
+  };
+  if (vkAllocateDescriptorSets(e->device, &info, e->descriptorSets) !=
+      VK_SUCCESS) {
+    printf("Unable to allocate descriptor sets\n");
+    exit(1);
+  }
+  for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    VkDescriptorBufferInfo bufferInfo = {
+        .buffer = e->uniformBuffers[i],
+        .offset = 0,
+        .range = sizeof(UniformBufferObject),
+    };
+    VkWriteDescriptorSet bufferWrite = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = e->descriptorSets[i],
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .pBufferInfo = &bufferInfo,
+    };
+    VkDescriptorImageInfo imageInfo = {
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageView = e->textureImageView,
+        .sampler = e->textureSampler,
+    };
+    VkWriteDescriptorSet samplerWrite = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = e->descriptorSets[i],
+        .dstBinding = 1,
+        .dstArrayElement = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .pImageInfo = &imageInfo};
+
+    VkWriteDescriptorSet writes[] = {bufferWrite, samplerWrite};
+    vkUpdateDescriptorSets(e->device, 2, writes, 0, NULL);
+  }
+}
+
+void createCommandBuffers(Engine *e) {
+  e->commandBuffers = malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkCommandBuffer));
+  if (e->commandBuffers == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  VkCommandBufferAllocateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = e->commandPool,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = MAX_FRAMES_IN_FLIGHT,
+  };
+  VkResult result =
+      vkAllocateCommandBuffers(e->device, &info, e->commandBuffers);
+  if (result != VK_SUCCESS) {
+    printf("failed to allocate buffers\n");
+    exit(1);
+  }
+}
+
+void createSyncObjects(Engine *e) {
+  printf("creating sync objects\n");
+  e->imageAvailableSemaphores =
+      malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
+  if (e->imageAvailableSemaphores == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  e->renderFinishedSemaphores =
+      malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
+  if (e->renderFinishedSemaphores == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  e->inFlight = malloc(sizeof(VkFence) * MAX_FRAMES_IN_FLIGHT);
+  if (e->inFlight == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  VkSemaphoreCreateInfo semaphoreInfo = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+  };
+  VkFenceCreateInfo fenceInfo = {
+      .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+      .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+  };
+  for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    printf("creating sync objects for index: %d\n", i);
+    if (vkCreateSemaphore(e->device, &semaphoreInfo, NULL,
+                          &e->imageAvailableSemaphores[i]) != VK_SUCCESS) {
+      printf("failed to create semaphore\n");
+      exit(1);
+    }
+    if (vkCreateSemaphore(e->device, &semaphoreInfo, NULL,
+                          &e->renderFinishedSemaphores[i]) != VK_SUCCESS) {
+      printf("failed to create semaphore");
+      exit(1);
+    }
+    if (vkCreateFence(e->device, &fenceInfo, NULL, &e->inFlight[i]) !=
+        VK_SUCCESS) {
+      printf("failed to create fence");
+      exit(1);
+    }
+  }
+}
+
+void copyBuffer(Engine *e, VkBuffer srcBuffer, VkBuffer dstBuffer,
+                VkDeviceSize size) {
+  VkCommandBufferAllocateInfo allocInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandPool = e->commandPool,
+      .commandBufferCount = 1,
+  };
+  VkCommandBuffer commandBuffer;
+  vkAllocateCommandBuffers(e->device, &allocInfo, &commandBuffer);
+  VkCommandBufferBeginInfo beginInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  vkBeginCommandBuffer(commandBuffer, &beginInfo);
+  VkBufferCopy copyRegion = {
+      .srcOffset = 0,
+      .dstOffset = 0,
+      .size = size,
+  };
+  vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+  vkEndCommandBuffer(commandBuffer);
+  VkSubmitInfo submitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &commandBuffer,
+  };
+  vkQueueSubmit(e->queue, 1, &submitInfo, VK_NULL_HANDLE);
+  vkQueueWaitIdle(e->queue);
+  vkFreeCommandBuffers(e->device, e->commandPool, 1, &commandBuffer);
+}
+
+void loadFile(void *ctx, const char *filename, const int isMtl,
+              const char *objFilename, char **data, size_t *len) {
+  if (isMtl == 1) {
+    return;
+  }
+  *data = load(filename, len);
+  printf("load file len: %ld\n", *len);
+}
+
+void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
+  printf("loading model: %s\n", filename);
+  tinyobj_attrib_t attrib;
+  tinyobj_shape_t *shapes;
+  tinyobj_material_t *materials;
+  size_t numShapes;
+  size_t numMaterials;
+  int result =
+      tinyobj_parse_obj(&attrib, &shapes, &numShapes, &materials, &numMaterials,
+                        filename, loadFile, NULL, TINYOBJ_FLAG_TRIANGULATE);
+  if (result != TINYOBJ_SUCCESS) {
+    printf("Failed to load model, error: %d\n", result);
+    exit(1);
+  }
+  vec3 verts[attrib.num_vertices];
+  for (uint32_t i = 0; i < attrib.num_vertices; i++) {
+    verts[i][0] = attrib.vertices[i * 3 + 0];
+    verts[i][1] = attrib.vertices[i * 3 + 1];
+    verts[i][2] = attrib.vertices[i * 3 + 2];
+  }
+  vec2 texCoords[attrib.num_texcoords];
+  for (uint32_t i = 0; i < attrib.num_texcoords; i++) {
+    texCoords[i][0] = attrib.texcoords[i * 2 + 0];
+    texCoords[i][1] = 1.0f - attrib.texcoords[i * 2 + 1];
+  }
+
+  Vertex *v = malloc(sizeof(Vertex) * attrib.num_faces);
+  if (v == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  *numVertices = attrib.num_faces;
+  int r = 0;
+  int count = 0;
+  for (uint32_t i = 0; i < attrib.num_face_num_verts; i++) {
+    for (uint32_t j = 0; j < attrib.face_num_verts[r]; j++) {
+      uint32_t faceIdx = (i * 3) + j;
+      tinyobj_vertex_index_t f = attrib.faces[faceIdx];
+      memcpy(&v[count].vertex, &verts[f.v_idx], sizeof(vec3));
+      memcpy(&v[count].texture, &texCoords[f.vt_idx], sizeof(vec2));
+      count++;
+    }
+    r++;
+  }
+  *vertices = v;
+}
+
+void updateUniformBuffer(Engine *e, uint32_t currentImage) {
+  if (e->start == 0) {
+    e->start = clock();
+  }
+  clock_t currentTime = clock();
+  float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
+  UniformBufferObject ubo = {
+      .model = GLM_MAT4_IDENTITY_INIT,
+      .view = GLM_MAT4_IDENTITY_INIT,
+      .proj = GLM_MAT4_IDENTITY_INIT,
+  };
+  glm_rotate(ubo.model, time / 25 * glm_rad(45.0f), (vec3){0.0f, 0.0f, 1.0f});
+  vec3 eye = {1.0f, 1.0f, 1.0f};
+  vec3 center = {0.0f, 0.0f, 0.0f};
+  vec3 up = {0.0f, 0.0f, 1.0f};
+  glm_lookat(eye, center, up, ubo.view);
+  glm_perspective(glm_rad(45.0f),
+                  e->swapchainExtent.width / (float)e->swapchainExtent.height,
+                  0.1f, 10.0f, ubo.proj);
+  ubo.proj[1][1] *= -1;
+  memcpy(e->uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+}
+
+void recordCommandBuffer(Engine *e, VkCommandBuffer commandBuffer,
+                         uint32_t imageIndex) {
+  VkCommandBufferBeginInfo begingInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+  };
+  VkResult result = vkBeginCommandBuffer(commandBuffer, &begingInfo);
+  if (result != VK_SUCCESS) {
+    printf("failed go begin command buffer");
+    exit(1);
+  }
+  VkClearValue clearColor = {
+      .color = {{0.0f, 0.0f, 0.0f, 1.0f}},
+  };
+  VkClearValue clearDepth = {
+      .depthStencil = {1.0f, 0},
+  };
+  VkClearValue clears[] = {clearColor, clearDepth};
+  VkRenderPassBeginInfo renderPassInfo = {
+      .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+      .renderPass = e->renderPass,
+      .framebuffer = e->framebuffers[imageIndex],
+      .renderArea.offset = {0, 0},
+      .renderArea.extent = e->swapchainExtent,
+      .pClearValues = clears,
+      .clearValueCount = 2,
+  };
+  vkCmdBeginRenderPass(commandBuffer, &renderPassInfo,
+                       VK_SUBPASS_CONTENTS_INLINE);
+  vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    e->pipeline);
+  VkViewport viewport = {
+      .x = 0.0f,
+      .y = 0.0f,
+      .width = e->swapchainExtent.width,
+      .height = e->swapchainExtent.height,
+      .minDepth = 0.0f,
+      .maxDepth = 1.0f,
+  };
+  vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+  VkRect2D scissor = {
+      .offset = {0, 0},
+      .extent = e->swapchainExtent,
+  };
+  vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+  VkDeviceSize offsets[] = {0};
+  vkCmdBindVertexBuffers(commandBuffer, 0, 1, &e->modelBuffer, offsets);
+  vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          e->pipelineLayout, 0, 1,
+                          &e->descriptorSets[e->currentFrame], 0, NULL);
+  vkCmdDraw(commandBuffer, e->modelVerticesNum, 1, 0, 0);
+  vkCmdEndRenderPass(commandBuffer);
+  VkResult endBufferResult = vkEndCommandBuffer(commandBuffer);
+  if (endBufferResult != VK_SUCCESS) {
+    printf("end buffer failed\n");
+    exit(1);
+  }
+}
+
+void drawFrame(Engine *e) {
+  vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
+                  UINT64_MAX);
+
+  uint32_t imageIndex;
+  vkAcquireNextImageKHR(e->device, e->swapchain, UINT64_MAX,
+                        e->imageAvailableSemaphores[e->currentFrame],
+                        VK_NULL_HANDLE, &imageIndex);
+  updateUniformBuffer(e, e->currentFrame);
+  vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
+  vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
+  recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);
+
+  VkPipelineStageFlags waitStages[] = {
+      VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+  VkSubmitInfo submitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores = &e->imageAvailableSemaphores[e->currentFrame],
+      .pWaitDstStageMask = waitStages,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &e->commandBuffers[e->currentFrame],
+      .signalSemaphoreCount = 1,
+      .pSignalSemaphores = &e->renderFinishedSemaphores[e->currentFrame],
+  };
+  if (vkQueueSubmit(e->queue, 1, &submitInfo, e->inFlight[e->currentFrame]) !=
+      VK_SUCCESS) {
+    printf("queue submit failed\n");
+    exit(1);
+  }
+  VkPresentInfoKHR presentInfo = {
+      .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores = &e->renderFinishedSemaphores[e->currentFrame],
+      .swapchainCount = 1,
+      .pSwapchains = &e->swapchain,
+      .pImageIndices = &imageIndex,
+  };
+  VkResult result = vkQueuePresentKHR(e->queue, &presentInfo);
+  if (result != VK_SUCCESS) {
+    printf("present failed\n");
+    exit(1);
+  }
+  e->currentFrame = (e->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void createModelBuffer(Engine *e) {
+  VkBuffer stagingBuffer;
+  VkDeviceMemory stagingMemory;
+  VkDeviceSize bufferSize = sizeof(Vertex) * e->modelVerticesNum;
+  createBuffer(e, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+               &stagingBuffer, &stagingMemory);
+
+  void *data;
+  vkMapMemory(e->device, stagingMemory, 0, bufferSize, 0, &data);
+  memcpy(data, e->modelVertices, bufferSize);
+  vkUnmapMemory(e->device, stagingMemory);
+  createBuffer(e, bufferSize,
+               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->modelBuffer,
+               &e->modelBufferMemory);
+  copyBuffer(e, stagingBuffer, e->modelBuffer, bufferSize);
+  vkDestroyBuffer(e->device, stagingBuffer, NULL);
+  vkFreeMemory(e->device, stagingMemory, NULL);
+}
+
 // TODO mess end
 
 Engine *makeEngine() {
@@ -761,16 +1494,16 @@ Engine *makeEngine() {
   createColorResources(e);
   createDepthResources(e);
   createFramebuffers(e);
-  // create texture image
-  // create texture image views
-  // create texture sampler
-  // create uniform buffers
-  // create descriptor pool
-  // create descriptor sets
-  // create command buffers
-  // create sync objects
-  // create vertex buffer with models
-  // create index buffer
+  createTextureImage(e);
+  createTextureImageView(e);
+  createTextureSampler(e);
+  createUniformBuffers(e);
+  createDescriptorPool(e);
+  createDescriptorSets(e);
+  createCommandBuffers(e);
+  createSyncObjects(e);
+  loadModel("assets/viking_room.obj", &e->modelVertices, &e->modelVerticesNum);
+  createModelBuffer(e);
   return e;
 }
 
@@ -823,5 +1556,7 @@ void freeEngine(Engine *engine) {
 void run(Engine *e) {
   while (!glfwWindowShouldClose(e->window)) {
     glfwPollEvents();
+    drawFrame(e);
   }
+  vkDeviceWaitIdle(e->device);
 }
