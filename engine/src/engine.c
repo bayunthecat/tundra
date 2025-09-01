@@ -1,3 +1,4 @@
+#include <cglm/cam.h>
 #include <string.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
@@ -17,7 +18,7 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
-#define MAX_FRAMES_IN_FLIGHT 3
+#define MAX_FRAMES_IN_FLIGHT 4
 
 struct Engine {
 
@@ -76,10 +77,6 @@ struct Engine {
   VkSemaphore *renderFinishedSemaphores;
 
   VkFence *inFlight;
-
-  VkBuffer vertexBuffer;
-
-  VkDeviceMemory vertexBufferMemory;
 
   VkBuffer indexBuffer;
 
@@ -1217,17 +1214,19 @@ void createSyncObjects(Engine *e) {
       .flags = VK_FENCE_CREATE_SIGNALED_BIT,
   };
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    printf("creating sync objects for index: %d\n", i);
+    printf("creating image available semaphore: %d\n", i);
     if (vkCreateSemaphore(e->device, &semaphoreInfo, NULL,
                           &e->imageAvailableSemaphores[i]) != VK_SUCCESS) {
       printf("failed to create semaphore\n");
       exit(1);
     }
+    printf("creating render finished semaphore: %d\n", i);
     if (vkCreateSemaphore(e->device, &semaphoreInfo, NULL,
                           &e->renderFinishedSemaphores[i]) != VK_SUCCESS) {
       printf("failed to create semaphore");
       exit(1);
     }
+    printf("creating in flight fence: %d\n", i);
     if (vkCreateFence(e->device, &fenceInfo, NULL, &e->inFlight[i]) !=
         VK_SUCCESS) {
       printf("failed to create fence");
@@ -1335,12 +1334,13 @@ void updateUniformBuffer(Engine *e, uint32_t currentImage) {
       .view = GLM_MAT4_IDENTITY_INIT,
       .proj = GLM_MAT4_IDENTITY_INIT,
   };
-  glm_rotate(ubo.model, time / 25 * glm_rad(45.0f), (vec3){0.0f, 0.0f, 1.0f});
-  vec3 eye = {1.0f, 1.0f, 1.0f};
+  // TODO do not rotate for now
+  // glm_rotate(ubo.model, time * glm_rad(45.0f), (vec3){0.0f, 1.0f, 0.0f});
+  vec3 eye = {0.0f, 5.0f, 0.0f};
   vec3 center = {0.0f, 0.0f, 0.0f};
   vec3 up = {0.0f, 0.0f, 1.0f};
   glm_lookat(eye, center, up, ubo.view);
-  glm_perspective(glm_rad(45.0f),
+  glm_perspective(glm_rad(100.0f),
                   e->swapchainExtent.width / (float)e->swapchainExtent.height,
                   0.1f, 10.0f, ubo.proj);
   ubo.proj[1][1] *= -1;
@@ -1479,6 +1479,7 @@ void createModelBuffer(Engine *e) {
 Engine *makeEngine() {
   Engine *e = malloc(sizeof(Engine));
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
+  e->currentFrame = 0;
   createGlfw(e);
   createInstance(&e->instance);
   createSurface(e);
@@ -1502,7 +1503,7 @@ Engine *makeEngine() {
   createDescriptorSets(e);
   createCommandBuffers(e);
   createSyncObjects(e);
-  loadModel("assets/viking_room.obj", &e->modelVertices, &e->modelVerticesNum);
+  loadModel("assets/branch_t.obj", &e->modelVertices, &e->modelVerticesNum);
   createModelBuffer(e);
   return e;
 }
