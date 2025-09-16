@@ -38,5 +38,16 @@
     "directory": "/home/vadym/workspace/tundra",
     "command": "gcc -Iengine/include -c engine/src/engine.c engine/src/instance.c sandbox/src/main.c -o /build/sandbox/src/sandbox.o",
     "file": "sandbox/src/main.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Ishader-sandbox/include -c shader-sandbox/src/shader_engine.c shader-sandbox/src/main.c -o /build/shader-sandbox/src/sandbox.o",
+    "file": "shader-sandbox/src/shader_engine.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Ishader-sandbox/include -c shader-sandbox/src/shader_engine.c shader-sandbox/src/main.c",
+    "file": "shader-sandbox/src/main.c"
   }
+
 ]

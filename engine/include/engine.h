@@ -8,6 +8,7 @@ typedef struct {
   mat4 model;
   mat4 view;
   mat4 proj;
+  vec2 resolution;
 } UniformBufferObject;
 
 typedef struct {

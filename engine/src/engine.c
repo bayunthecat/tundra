@@ -1,4 +1,5 @@
 #include <cglm/cam.h>
+#include <cglm/types.h>
 #include <string.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
@@ -18,7 +19,7 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
-#define MAX_FRAMES_IN_FLIGHT 4
+#define MAX_FRAMES_IN_FLIGHT 2
 
 struct Engine {
 
@@ -1333,14 +1334,18 @@ void updateUniformBuffer(Engine *e, uint32_t currentImage) {
       .model = GLM_MAT4_IDENTITY_INIT,
       .view = GLM_MAT4_IDENTITY_INIT,
       .proj = GLM_MAT4_IDENTITY_INIT,
+      .resolution =
+          {
+              (float)e->swapchainExtent.width,
+              (float)e->swapchainExtent.height,
+          },
   };
-  // TODO do not rotate for now
-  // glm_rotate(ubo.model, time * glm_rad(45.0f), (vec3){0.0f, 1.0f, 0.0f});
-  vec3 eye = {0.0f, 5.0f, 0.0f};
+  glm_rotate(ubo.model, time * glm_rad(45.0f), (vec3){0.0f, 0.0f, 1.0f});
+  vec3 eye = {2.0f, 2.0f, 2.0f};
   vec3 center = {0.0f, 0.0f, 0.0f};
   vec3 up = {0.0f, 0.0f, 1.0f};
   glm_lookat(eye, center, up, ubo.view);
-  glm_perspective(glm_rad(100.0f),
+  glm_perspective(glm_rad(45.0f),
                   e->swapchainExtent.width / (float)e->swapchainExtent.height,
                   0.1f, 10.0f, ubo.proj);
   ubo.proj[1][1] *= -1;
@@ -1406,15 +1411,17 @@ void recordCommandBuffer(Engine *e, VkCommandBuffer commandBuffer,
 }
 
 void drawFrame(Engine *e) {
-  vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
-                  UINT64_MAX);
-
   uint32_t imageIndex;
   vkAcquireNextImageKHR(e->device, e->swapchain, UINT64_MAX,
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
-  updateUniformBuffer(e, e->currentFrame);
+
+  vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
+                  UINT64_MAX);
   vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
+
+  printf("acquired image %d, current frame %d\n", imageIndex, e->currentFrame);
+  updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
   recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);
 
@@ -1503,7 +1510,7 @@ Engine *makeEngine() {
   createDescriptorSets(e);
   createCommandBuffers(e);
   createSyncObjects(e);
-  loadModel("assets/branch_t.obj", &e->modelVertices, &e->modelVerticesNum);
+  loadModel("assets/viking_room.obj", &e->modelVertices, &e->modelVerticesNum);
   createModelBuffer(e);
   return e;
 }
