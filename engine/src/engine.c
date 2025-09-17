@@ -1411,16 +1411,19 @@ void recordCommandBuffer(Engine *e, VkCommandBuffer commandBuffer,
 }
 
 void drawFrame(Engine *e) {
+  vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
+                  UINT64_MAX);
   uint32_t imageIndex;
   vkAcquireNextImageKHR(e->device, e->swapchain, UINT64_MAX,
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
 
-  vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
-                  UINT64_MAX);
   vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
 
-  printf("acquired image %d, current frame %d\n", imageIndex, e->currentFrame);
+  printf("acquired image %d, current frame %d, imgAvSem: %p, renFinSem: %p\n",
+         imageIndex, e->currentFrame,
+         e->imageAvailableSemaphores[e->currentFrame],
+         e->renderFinishedSemaphores[e->currentFrame]);
   updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
   recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);
