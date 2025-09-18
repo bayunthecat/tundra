@@ -636,7 +636,7 @@ void createGraphicsPipeline(Engine *e) {
       .rasterizerDiscardEnable = VK_FALSE,
       .polygonMode = VK_POLYGON_MODE_FILL,
       .lineWidth = 1.0f,
-      .cullMode = VK_CULL_MODE_BACK_BIT,
+      .cullMode = VK_CULL_MODE_NONE,
       .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
       .depthBiasEnable = VK_FALSE,
 
@@ -1419,11 +1419,6 @@ void drawFrame(Engine *e) {
                         VK_NULL_HANDLE, &imageIndex);
 
   vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
-
-  printf("acquired image %d, current frame %d, imgAvSem: %p, renFinSem: %p\n",
-         imageIndex, e->currentFrame,
-         e->imageAvailableSemaphores[e->currentFrame],
-         e->renderFinishedSemaphores[e->currentFrame]);
   updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
   recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);

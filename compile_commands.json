@@ -48,6 +48,15 @@
     "directory": "/home/vadym/workspace/tundra",
     "command": "gcc -Ishader-sandbox/include -c shader-sandbox/src/shader_engine.c shader-sandbox/src/main.c",
     "file": "shader-sandbox/src/main.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Ibranch/model/include",
+    "file": "branch/model/src/board.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Ibranch/model/include -Itest/include",
+    "file": "branch/model/test/runner.c"
   }
-
 ]
