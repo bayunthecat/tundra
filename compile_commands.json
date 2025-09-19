@@ -51,12 +51,22 @@
   },
   {
     "directory": "/home/vadym/workspace/tundra",
-    "command": "gcc -Ibranch/model/include",
+    "command": "gcc -Ibranch/model/include -Icollections/queue/include",
     "file": "branch/model/src/board.c"
   },
   {
     "directory": "/home/vadym/workspace/tundra",
     "command": "gcc -Ibranch/model/include -Itest/include",
     "file": "branch/model/test/runner.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Icollections/queue/include",
+    "file": "collections/queue/src/queue.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Icollections/queue/include -Itest/include",
+    "file": "collections/queue/test/runner.c"
   }
 ]

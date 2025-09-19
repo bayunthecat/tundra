@@ -1,11 +1,10 @@
 #include "model.h"
+#include "queue.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 struct Tile {
-  TileType type;
-  int degree;
-  int connected;
+  int val;
 };
 
 struct Board {
@@ -13,6 +12,8 @@ struct Board {
   int width;
   int height;
 };
+
+void generateBoard(Board *brd) { Queue *q = queueMake(); }
 
 Board *makeBoard(int width, int height) {
   Board *pBrd = malloc(sizeof(Board));
