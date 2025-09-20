@@ -1,5 +1,6 @@
 #include "queue.h"
 #include "test.h"
+#include <stdio.h>
 
 void testQueueNominal(TestRun *r) {
   Queue *q = queueMake();
@@ -22,9 +23,36 @@ void testQueueNominal(TestRun *r) {
   queueFree(q);
 }
 
+void populateIntArray(int arr[], int len) {
+  for (int i = 0; i < len; i++) {
+    arr[i] = i + 1;
+  }
+}
+
+void testQueueLarge(TestRun *r) {
+  int len = 100000;
+  int random[len];
+  populateIntArray(random, len);
+  Queue *q = queueMake();
+  for (int i = 0; i < len; i++) {
+    queueOffer(q, &random[i]);
+  }
+  int *pPolled;
+  int polled;
+  for (int i = 0; i < len; i++) {
+    pPolled = queuePoll(q);
+    polled = *pPolled;
+    if (polled != i + 1) {
+      fail(r, "values mismatch");
+    }
+  }
+  queueFree(q);
+}
+
 int main() {
   TestSuite *s = testSuiteMake("queue");
   registerFn(s, "testQueueNominal", testQueueNominal);
+  registerFn(s, "testQueueLarge", testQueueLarge);
   run(s);
   testSuiteFree(s);
 }
