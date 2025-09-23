@@ -4,7 +4,8 @@
 #include <stdlib.h>
 
 struct Tile {
-  int val;
+  TileType type;
+  int degree;
 };
 
 struct Board {
@@ -13,7 +14,58 @@ struct Board {
   int height;
 };
 
-void generateBoard(Board *brd) { Queue *q = queueMake(); }
+typedef struct Coord {
+  int i, j;
+} Coord;
+
+int rotateLeft(int v) { return ((v << 1) & 0b1111) | (v >> 0b0011); }
+
+inline int applyDegree(int val) {
+  int shift = val / 90;
+  return 0;
+}
+
+inline int val(Tile *t) {
+  switch (t->type) {
+  case T:
+    return 0b1110;
+  case I:
+    return 0b0101;
+  case L:
+    return 0b0110;
+  case E:
+    return 0;
+  }
+}
+
+void generateBoard(Board *brd) {
+  Queue *q = queueMake();
+  Coord start = {4, 4};
+  queueOffer(q, &start);
+  int len;
+  Coord dir[] = {
+      {0, -1},
+      {-1, 0},
+      {0, 1},
+      {1, 0},
+  };
+  while ((len = queueLen(q)) != 0) {
+    for (int i = 0; i < len; i++) {
+      Coord *polled = queuePoll(q);
+      if (polled->j < 0 || polled->j >= brd->height) {
+        continue;
+      }
+      if (polled->i < 0 || polled->i >= brd->width) {
+        continue;
+      }
+      // check visited, set visited
+      for (int j = 0; j < 4; j++) {
+        Coord toOffer = {polled->i + dir[j].i, polled->j + dir[j].j};
+        queueOffer(q, &toOffer);
+      }
+    }
+  }
+}
 
 Board *makeBoard(int width, int height) {
   Board *pBrd = malloc(sizeof(Board));

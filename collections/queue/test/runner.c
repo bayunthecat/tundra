@@ -1,6 +1,7 @@
 #include "queue.h"
 #include "test.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 void testQueueNominal(TestRun *r) {
   Queue *q = queueMake();
@@ -42,7 +43,7 @@ void testQueueLarge(TestRun *r) {
   for (int i = 0; i < len; i++) {
     pPolled = queuePoll(q);
     polled = *pPolled;
-    if (polled != i + 1) {
+    if (polled != random[i]) {
       fail(r, "values mismatch");
     }
   }

@@ -1,6 +1,6 @@
 #ifndef MODEL_H
 
-typedef enum { T, I, L } TileType;
+typedef enum { T, I, L, E } TileType;
 
 typedef struct Board Board;
 

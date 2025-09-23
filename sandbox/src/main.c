@@ -1,10 +1,12 @@
-#include "engine.h"
 #include <stdio.h>
 
+static inline int rotate(int v) {
+  //
+  return (v << 1 & 0b1111) | (v >> 0b0011);
+}
+
 int main() {
-  Engine *e = makeEngine();
-  run(e);
-  freeEngine(e);
-  printf("Success\n");
+  int value = 0b1101;
+  printf("original: %d, rotated: %d\n", value, rotate(value));
   return 0;
 }
