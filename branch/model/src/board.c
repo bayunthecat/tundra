@@ -1,97 +1,170 @@
 #include "model.h"
 #include "queue.h"
+#include <endian.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 struct Tile {
-  TileType type;
-  int degree;
+  int v;
 };
 
 struct Board {
   Tile **tiles;
-  int width;
-  int height;
+  int cols;
+  int rows;
 };
 
 typedef struct Coord {
   int i, j;
 } Coord;
 
-int rotateLeft(int v) { return ((v << 1) & 0b1111) | (v >> 0b0011); }
-
-inline int applyDegree(int val) {
-  int shift = val / 90;
-  return 0;
+static inline int shiftRight(int v, int times) {
+  return (v >> times) | (v << (4 - times) & 0b1111);
 }
 
-inline int val(Tile *t) {
-  switch (t->type) {
-  case T:
-    return 0b1110;
-  case I:
-    return 0b0101;
-  case L:
-    return 0b0110;
-  case E:
-    return 0;
+int **make2DIntArray(int rows, int cols) {
+  int **arr = malloc(sizeof(int *) * rows);
+  // TODO check for null
+  for (int i = 0; i < rows; i++) {
+    size_t size = sizeof(int) * cols;
+    arr[i] = malloc(size);
+    memset(arr[i], 0, size);
+  }
+  return arr;
+}
+
+void free2DIntArray(int **arr, int rows, int cols) {
+  for (int i = 0; i < rows; i++) {
+    free(arr[i]);
+  }
+  free(arr);
+}
+
+int roll50P() {
+  int result = rand() % 100;
+  return result < 50;
+}
+
+static inline int hasLeft(Tile *t) { return (t->v & 0b1000) >> 3; }
+
+static inline int hasRight(Tile *t) { return (t->v & 0b0010) >> 1; }
+
+static inline int hasUp(Tile *t) { return (t->v & 0b0100) >> 2; }
+
+static inline int hasDown(Tile *t) { return t->v & 0b0001; }
+
+Coord *makeCoord(int i, int j) {
+  Coord *c = malloc(sizeof(Coord));
+  c->i = i;
+  c->j = j;
+  return c;
+};
+
+void printBoard(Board *brd) {
+  for (int i = 0; i < brd->rows; i++) {
+    for (int j = 0; j < brd->cols; j++) {
+      printf("%d ", brd->tiles[i][j].v);
+    }
+    printf("\n");
   }
 }
 
 void generateBoard(Board *brd) {
+  srand((unsigned)time(NULL));
+  int **visited = make2DIntArray(brd->rows, brd->cols);
+  int **reserved = make2DIntArray(brd->rows, brd->cols);
   Queue *q = queueMake();
-  Coord start = {4, 4};
-  queueOffer(q, &start);
+  // Hardcoded start
+  Coord *start = makeCoord(2, 2);
+  queueOffer(q, start);
   int len;
-  Coord dir[] = {
-      {0, -1},
-      {-1, 0},
-      {0, 1},
-      {1, 0},
-  };
   while ((len = queueLen(q)) != 0) {
     for (int i = 0; i < len; i++) {
-      Coord *polled = queuePoll(q);
-      if (polled->j < 0 || polled->j >= brd->height) {
+      Coord *p = queuePoll(q);
+      if (visited[p->i][p->j]) {
+        free(p);
         continue;
       }
-      if (polled->i < 0 || polled->i >= brd->width) {
-        continue;
+      visited[p->i][p->j] = 1;
+      int genValue = 0;
+      if (p->j - 1 >= 0) {
+        if (hasRight(&brd->tiles[p->i][p->j - 1]) ||
+            (!reserved[p->i][p->j - 1] && roll50P())) {
+          genValue = genValue | 0b1000;
+          reserved[p->i][p->j - 1] = 1;
+          Coord *o = makeCoord(p->i, p->j - 1);
+          queueOffer(q, o);
+        }
       }
-      // check visited, set visited
-      for (int j = 0; j < 4; j++) {
-        Coord toOffer = {polled->i + dir[j].i, polled->j + dir[j].j};
-        queueOffer(q, &toOffer);
+      if (p->i - 1 >= 0) {
+        if (hasDown(&brd->tiles[p->i - 1][p->j]) ||
+            (!reserved[p->i - 1][p->j] && roll50P())) {
+          genValue = genValue | 0b0100;
+          reserved[p->i - 1][p->j] = 1;
+          Coord *o = makeCoord(p->i - 1, p->j);
+          queueOffer(q, o);
+        }
       }
+      if (p->j + 1 < brd->cols) {
+        if (hasLeft(&brd->tiles[p->i][p->j + 1]) ||
+            (!reserved[p->i][p->j + 1] && roll50P())) {
+          genValue = genValue | 0b0010;
+          reserved[p->i][p->j + 1] = 1;
+          Coord *o = makeCoord(p->i, p->j + 1);
+          queueOffer(q, o);
+        }
+      }
+      if (p->i + 1 < brd->rows) {
+        if (hasUp(&brd->tiles[p->i + 1][p->j]) ||
+            (!reserved[p->i + 1][p->j] && roll50P())) {
+          genValue = genValue | 0b0001;
+          Coord *o = makeCoord(p->i + 1, p->j);
+          reserved[p->i + 1][p->j] = 1;
+          queueOffer(q, o);
+        }
+      }
+      brd->tiles[p->i][p->j].v = genValue;
+      free(p);
     }
   }
+  free2DIntArray(visited, brd->rows, brd->rows);
+  free2DIntArray(reserved, brd->cols, brd->cols);
+  queueFree(q);
 }
 
-Board *makeBoard(int width, int height) {
+Board *makeBoard(int rows, int cols) {
   Board *pBrd = malloc(sizeof(Board));
-  pBrd->width = width;
-  pBrd->height = height;
+  pBrd->cols = cols;
+  pBrd->rows = rows;
   if (pBrd == NULL) {
     printf("malloc failed\n");
     exit(1);
   }
-  pBrd->tiles = malloc(sizeof(Tile *) * width);
+  pBrd->tiles = malloc(sizeof(Tile *) * rows);
   if (pBrd->tiles == NULL) {
     printf("malloc failed\n");
     exit(1);
   }
-  for (int i = 0; i < width; i++) {
-    pBrd->tiles[i] = malloc(sizeof(Tile) * height);
+  for (int i = 0; i < cols; i++) {
+    pBrd->tiles[i] = malloc(sizeof(Tile) * rows);
     if (pBrd->tiles[i] == NULL) {
       printf("malloc failed\n");
       exit(1);
     }
+    for (int j = 0; j < cols; j++) {
+      pBrd->tiles[i][j].v = 0;
+    }
   }
+  generateBoard(pBrd);
+  printBoard(pBrd);
   return pBrd;
 }
 
 void freeBoard(Board *brd) {
-  for (int i = 0; i < brd->width; i++) {
+  for (int i = 0; i < brd->rows; i++) {
     free(brd->tiles[i]);
   }
   free(brd->tiles);

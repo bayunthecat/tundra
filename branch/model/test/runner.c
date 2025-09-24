@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 void testBoardNominal(TestRun *r) {
-  Board *brd = makeBoard(10, 10);
+  Board *brd = makeBoard(4, 4);
   if (brd == NULL) {
     fail(r, "failed to create the board");
   }
