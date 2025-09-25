@@ -27,10 +27,16 @@ static inline int shiftRight(int v, int times) {
 
 int **make2DIntArray(int rows, int cols) {
   int **arr = malloc(sizeof(int *) * rows);
-  // TODO check for null
+  if (arr == NULL) {
+    fprintf(stderr, "malloc failed\n");
+    exit(1);
+  }
   for (int i = 0; i < rows; i++) {
     size_t size = sizeof(int) * cols;
     arr[i] = malloc(size);
+    if (arr[i] == NULL) {
+      fprintf(stderr, "malloc failed\n");
+    }
     memset(arr[i], 0, size);
   }
   return arr;
@@ -63,15 +69,6 @@ Coord *makeCoord(int i, int j) {
   return c;
 };
 
-void printBoard(Board *brd) {
-  for (int i = 0; i < brd->rows; i++) {
-    for (int j = 0; j < brd->cols; j++) {
-      printf("%d ", brd->tiles[i][j].v);
-    }
-    printf("\n");
-  }
-}
-
 void generateBoard(Board *brd) {
   srand((unsigned)time(NULL));
   int **visited = make2DIntArray(brd->rows, brd->cols);
@@ -90,9 +87,11 @@ void generateBoard(Board *brd) {
       }
       visited[p->i][p->j] = 1;
       int genValue = 0;
+      int connections = 0;
+      // mandatory connections
       if (p->j - 1 >= 0) {
-        if (hasRight(&brd->tiles[p->i][p->j - 1]) ||
-            (!reserved[p->i][p->j - 1] && roll50P())) {
+        if (hasRight(&brd->tiles[p->i][p->j - 1])) {
+          connections++;
           genValue = genValue | 0b1000;
           reserved[p->i][p->j - 1] = 1;
           Coord *o = makeCoord(p->i, p->j - 1);
@@ -100,8 +99,8 @@ void generateBoard(Board *brd) {
         }
       }
       if (p->i - 1 >= 0) {
-        if (hasDown(&brd->tiles[p->i - 1][p->j]) ||
-            (!reserved[p->i - 1][p->j] && roll50P())) {
+        if (hasDown(&brd->tiles[p->i - 1][p->j])) {
+          connections++;
           genValue = genValue | 0b0100;
           reserved[p->i - 1][p->j] = 1;
           Coord *o = makeCoord(p->i - 1, p->j);
@@ -109,8 +108,8 @@ void generateBoard(Board *brd) {
         }
       }
       if (p->j + 1 < brd->cols) {
-        if (hasLeft(&brd->tiles[p->i][p->j + 1]) ||
-            (!reserved[p->i][p->j + 1] && roll50P())) {
+        if (hasLeft(&brd->tiles[p->i][p->j + 1])) {
+          connections++;
           genValue = genValue | 0b0010;
           reserved[p->i][p->j + 1] = 1;
           Coord *o = makeCoord(p->i, p->j + 1);
@@ -118,8 +117,45 @@ void generateBoard(Board *brd) {
         }
       }
       if (p->i + 1 < brd->rows) {
-        if (hasUp(&brd->tiles[p->i + 1][p->j]) ||
-            (!reserved[p->i + 1][p->j] && roll50P())) {
+        if (hasUp(&brd->tiles[p->i + 1][p->j])) {
+          connections++;
+          genValue = genValue | 0b0001;
+          Coord *o = makeCoord(p->i + 1, p->j);
+          reserved[p->i + 1][p->j] = 1;
+          queueOffer(q, o);
+        }
+      }
+      // generate new connections
+      if (p->j - 1 >= 0) {
+        if (!reserved[p->i][p->j - 1] && connections < 3 && roll50P()) {
+          connections++;
+          genValue = genValue | 0b1000;
+          reserved[p->i][p->j - 1] = 1;
+          Coord *o = makeCoord(p->i, p->j - 1);
+          queueOffer(q, o);
+        }
+      }
+      if (p->i - 1 >= 0) {
+        if (!reserved[p->i - 1][p->j] && connections < 3 && roll50P()) {
+          connections++;
+          genValue = genValue | 0b0100;
+          reserved[p->i - 1][p->j] = 1;
+          Coord *o = makeCoord(p->i - 1, p->j);
+          queueOffer(q, o);
+        }
+      }
+      if (p->j + 1 < brd->cols) {
+        if (!reserved[p->i][p->j + 1] && connections < 3 && roll50P()) {
+          connections++;
+          genValue = genValue | 0b0010;
+          reserved[p->i][p->j + 1] = 1;
+          Coord *o = makeCoord(p->i, p->j + 1);
+          queueOffer(q, o);
+        }
+      }
+      if (p->i + 1 < brd->rows) {
+        if (!reserved[p->i + 1][p->j] && connections < 3 && roll50P()) {
+          connections++;
           genValue = genValue | 0b0001;
           Coord *o = makeCoord(p->i + 1, p->j);
           reserved[p->i + 1][p->j] = 1;
@@ -133,6 +169,15 @@ void generateBoard(Board *brd) {
   free2DIntArray(visited, brd->rows, brd->rows);
   free2DIntArray(reserved, brd->cols, brd->cols);
   queueFree(q);
+}
+
+void printBoard(Board *brd) {
+  for (int i = 0; i < brd->rows; i++) {
+    for (int j = 0; j < brd->cols; j++) {
+      printf("%d ", brd->tiles[i][j].v);
+    }
+    printf("\n");
+  }
 }
 
 Board *makeBoard(int rows, int cols) {
