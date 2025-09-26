@@ -69,13 +69,12 @@ Coord *makeCoord(int i, int j) {
   return c;
 };
 
-void generateBoard(Board *brd) {
-  srand((unsigned)time(NULL));
+void generateBoard(Board *brd, int seed) {
+  srand(seed);
   int **visited = make2DIntArray(brd->rows, brd->cols);
   int **reserved = make2DIntArray(brd->rows, brd->cols);
   Queue *q = queueMake();
-  // Hardcoded start
-  Coord *start = makeCoord(2, 2);
+  Coord *start = makeCoord(brd->rows / 2, brd->cols / 2);
   queueOffer(q, start);
   int len;
   while ((len = queueLen(q)) != 0) {
@@ -93,36 +92,24 @@ void generateBoard(Board *brd) {
         if (hasRight(&brd->tiles[p->i][p->j - 1])) {
           connections++;
           genValue = genValue | 0b1000;
-          reserved[p->i][p->j - 1] = 1;
-          Coord *o = makeCoord(p->i, p->j - 1);
-          queueOffer(q, o);
         }
       }
       if (p->i - 1 >= 0) {
         if (hasDown(&brd->tiles[p->i - 1][p->j])) {
           connections++;
           genValue = genValue | 0b0100;
-          reserved[p->i - 1][p->j] = 1;
-          Coord *o = makeCoord(p->i - 1, p->j);
-          queueOffer(q, o);
         }
       }
       if (p->j + 1 < brd->cols) {
         if (hasLeft(&brd->tiles[p->i][p->j + 1])) {
           connections++;
           genValue = genValue | 0b0010;
-          reserved[p->i][p->j + 1] = 1;
-          Coord *o = makeCoord(p->i, p->j + 1);
-          queueOffer(q, o);
         }
       }
       if (p->i + 1 < brd->rows) {
         if (hasUp(&brd->tiles[p->i + 1][p->j])) {
           connections++;
           genValue = genValue | 0b0001;
-          Coord *o = makeCoord(p->i + 1, p->j);
-          reserved[p->i + 1][p->j] = 1;
-          queueOffer(q, o);
         }
       }
       // generate new connections
@@ -171,6 +158,10 @@ void generateBoard(Board *brd) {
   queueFree(q);
 }
 
+int boardValueAt(Board *brd, int row, int col) {
+  return brd->tiles[row][col].v;
+}
+
 void printBoard(Board *brd) {
   for (int i = 0; i < brd->rows; i++) {
     for (int j = 0; j < brd->cols; j++) {
@@ -180,7 +171,7 @@ void printBoard(Board *brd) {
   }
 }
 
-Board *makeBoard(int rows, int cols) {
+Board *makeBoard(int seed, int rows, int cols) {
   Board *pBrd = malloc(sizeof(Board));
   pBrd->cols = cols;
   pBrd->rows = rows;
@@ -203,7 +194,8 @@ Board *makeBoard(int rows, int cols) {
       pBrd->tiles[i][j].v = 0;
     }
   }
-  generateBoard(pBrd);
+  // for testing purposes
+  generateBoard(pBrd, seed);
   printBoard(pBrd);
   return pBrd;
 }
