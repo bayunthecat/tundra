@@ -9,20 +9,22 @@
 
 struct Tile {
   int v;
-};
-
-struct Board {
-  Tile **tiles;
-  int cols;
-  int rows;
+  int connected;
 };
 
 typedef struct Coord {
   int i, j;
 } Coord;
 
-static inline int shiftRight(int v, int times) {
-  return (v >> times) | (v << (4 - times) & 0b1111);
+struct Board {
+  Tile **tiles;
+  int cols;
+  int rows;
+  Coord source;
+};
+
+static inline void shiftRight(int *v, int times) {
+  *v = (*v >> times) | (*v << (4 - times) & 0b1111);
 }
 
 int **make2DIntArray(int rows, int cols) {
@@ -62,6 +64,10 @@ static inline int hasUp(Tile *t) { return (t->v & 0b0100) >> 2; }
 
 static inline int hasDown(Tile *t) { return t->v & 0b0001; }
 
+static inline Tile *tileAt(Board *brd, Coord *c) {
+  return &brd->tiles[c->i][c->j];
+}
+
 Coord *makeCoord(int i, int j) {
   Coord *c = malloc(sizeof(Coord));
   c->i = i;
@@ -74,7 +80,7 @@ void generateBoard(Board *brd, int seed) {
   int **visited = make2DIntArray(brd->rows, brd->cols);
   int **reserved = make2DIntArray(brd->rows, brd->cols);
   Queue *q = queueMake();
-  Coord *start = makeCoord(brd->rows / 2, brd->cols / 2);
+  Coord *start = makeCoord(brd->source.i, brd->source.j);
   queueOffer(q, start);
   int len;
   while ((len = queueLen(q)) != 0) {
@@ -158,8 +164,59 @@ void generateBoard(Board *brd, int seed) {
   queueFree(q);
 }
 
+void resetConnected(Board *brd) {
+  for (int i = 0; i < brd->rows; i++) {
+    for (int j = 0; j < brd->cols; j++) {
+      brd->tiles[i][j].connected = 0;
+    }
+  }
+}
+
+void markConnected(Board *brd, int i, int j) {
+  Tile *t = &brd->tiles[i][j];
+  t->connected = 1;
+  if (hasLeft(t)) {
+    if (j - 1 >= 0 && hasRight(&brd->tiles[i][j - 1]) &&
+        !brd->tiles[i][j - 1].connected) {
+      markConnected(brd, i, j - 1);
+    }
+  }
+  if (hasUp(t)) {
+    if (i - 1 >= 0 && hasDown(&brd->tiles[i - 1][j]) &&
+        !brd->tiles[i - 1][j].connected) {
+      markConnected(brd, i - 1, j);
+    }
+  }
+  if (hasRight(t)) {
+    if (j + 1 < brd->cols && hasLeft(&brd->tiles[i][j + 1]) &&
+        !brd->tiles[i][j + 1].connected) {
+      markConnected(brd, i, j + 1);
+    }
+  }
+  if (hasDown(t)) {
+    if (i + 1 < brd->rows && hasUp(&brd->tiles[i + 1][j]) &&
+        !brd->tiles[i + 1][j].connected) {
+      markConnected(brd, i + 1, j);
+    }
+  }
+}
+
+void markConnectedFromSource(Board *brd) {
+  resetConnected(brd);
+  markConnected(brd, brd->source.i, brd->source.j);
+}
+
+void boardRotateAt(Board *brd, int row, int col) {
+  shiftRight(&brd->tiles[row][col].v, 1);
+  markConnectedFromSource(brd);
+}
+
 int boardValueAt(Board *brd, int row, int col) {
   return brd->tiles[row][col].v;
+}
+
+int boardConnectedAt(Board *brd, int row, int col) {
+  return brd->tiles[row][col].connected;
 }
 
 void printBoard(Board *brd) {
@@ -171,10 +228,12 @@ void printBoard(Board *brd) {
   }
 }
 
-Board *makeBoard(int seed, int rows, int cols) {
+Board *boardMake(int seed, int rows, int cols) {
   Board *pBrd = malloc(sizeof(Board));
   pBrd->cols = cols;
   pBrd->rows = rows;
+  pBrd->source.i = rows / 2;
+  pBrd->source.j = cols / 2;
   if (pBrd == NULL) {
     printf("malloc failed\n");
     exit(1);
@@ -194,13 +253,12 @@ Board *makeBoard(int seed, int rows, int cols) {
       pBrd->tiles[i][j].v = 0;
     }
   }
-  // for testing purposes
   generateBoard(pBrd, seed);
-  printBoard(pBrd);
+  markConnectedFromSource(pBrd);
   return pBrd;
 }
 
-void freeBoard(Board *brd) {
+void boardFree(Board *brd) {
   for (int i = 0; i < brd->rows; i++) {
     free(brd->tiles[i]);
   }
