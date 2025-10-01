@@ -17,7 +17,7 @@ typedef struct Coord {
 } Coord;
 
 struct Board {
-  Tile **tiles;
+  Tile *tiles;
   int cols;
   int rows;
   Coord source;
@@ -64,8 +64,8 @@ static inline int hasUp(Tile *t) { return (t->v & 0b0100) >> 2; }
 
 static inline int hasDown(Tile *t) { return t->v & 0b0001; }
 
-static inline Tile *tileAt(Board *brd, Coord *c) {
-  return &brd->tiles[c->i][c->j];
+static inline Tile *tileAt(Board *brd, int row, int col) {
+  return &brd->tiles[brd->cols * row + col];
 }
 
 Coord *makeCoord(int i, int j) {
@@ -95,25 +95,29 @@ void generateBoard(Board *brd, int seed) {
       int connections = 0;
       // mandatory connections
       if (p->j - 1 >= 0) {
-        if (hasRight(&brd->tiles[p->i][p->j - 1])) {
+        Tile *atLeft = tileAt(brd, p->i, p->j - 1);
+        if (hasRight(atLeft)) {
           connections++;
           genValue = genValue | 0b1000;
         }
       }
       if (p->i - 1 >= 0) {
-        if (hasDown(&brd->tiles[p->i - 1][p->j])) {
+        Tile *atUp = tileAt(brd, p->i - 1, p->j);
+        if (hasDown(atUp)) {
           connections++;
           genValue = genValue | 0b0100;
         }
       }
       if (p->j + 1 < brd->cols) {
-        if (hasLeft(&brd->tiles[p->i][p->j + 1])) {
+        Tile *atRight = tileAt(brd, p->i, p->j + 1);
+        if (hasLeft(atRight)) {
           connections++;
           genValue = genValue | 0b0010;
         }
       }
       if (p->i + 1 < brd->rows) {
-        if (hasUp(&brd->tiles[p->i + 1][p->j])) {
+        Tile *atDown = tileAt(brd, p->i + 1, p->j);
+        if (hasUp(atDown)) {
           connections++;
           genValue = genValue | 0b0001;
         }
@@ -155,7 +159,7 @@ void generateBoard(Board *brd, int seed) {
           queueOffer(q, o);
         }
       }
-      brd->tiles[p->i][p->j].v = genValue;
+      tileAt(brd, p->i, p->j)->v = genValue;
       free(p);
     }
   }
@@ -165,37 +169,35 @@ void generateBoard(Board *brd, int seed) {
 }
 
 void resetConnected(Board *brd) {
-  for (int i = 0; i < brd->rows; i++) {
-    for (int j = 0; j < brd->cols; j++) {
-      brd->tiles[i][j].connected = 0;
-    }
+  for (int i = 0; i < brd->rows * brd->cols; i++) {
+    brd->tiles[i].connected = 0;
   }
 }
 
 void markConnected(Board *brd, int i, int j) {
-  Tile *t = &brd->tiles[i][j];
+  Tile *t = tileAt(brd, i, j);
   t->connected = 1;
-  if (hasLeft(t)) {
-    if (j - 1 >= 0 && hasRight(&brd->tiles[i][j - 1]) &&
-        !brd->tiles[i][j - 1].connected) {
+  if (hasLeft(t) && j - 1 >= 0) {
+    Tile *leftOf = tileAt(brd, i, j - 1);
+    if (hasRight(leftOf) && !leftOf->connected) {
       markConnected(brd, i, j - 1);
     }
   }
-  if (hasUp(t)) {
-    if (i - 1 >= 0 && hasDown(&brd->tiles[i - 1][j]) &&
-        !brd->tiles[i - 1][j].connected) {
+  if (hasUp(t) && i - 1 >= 0) {
+    Tile *upOf = tileAt(brd, i - 1, j);
+    if (hasDown(upOf) && !upOf->connected) {
       markConnected(brd, i - 1, j);
     }
   }
-  if (hasRight(t)) {
-    if (j + 1 < brd->cols && hasLeft(&brd->tiles[i][j + 1]) &&
-        !brd->tiles[i][j + 1].connected) {
+  if (hasRight(t) && j + 1 < brd->cols) {
+    Tile *rightOf = tileAt(brd, i, j + 1);
+    if (hasLeft(rightOf) && !rightOf->connected) {
       markConnected(brd, i, j + 1);
     }
   }
-  if (hasDown(t)) {
-    if (i + 1 < brd->rows && hasUp(&brd->tiles[i + 1][j]) &&
-        !brd->tiles[i + 1][j].connected) {
+  if (hasDown(t) && i + 1 < brd->rows) {
+    Tile *downOf = tileAt(brd, i + 1, j);
+    if (hasUp(downOf) && !downOf->connected) {
       markConnected(brd, i + 1, j);
     }
   }
@@ -207,25 +209,16 @@ void markConnectedFromSource(Board *brd) {
 }
 
 void boardRotateAt(Board *brd, int row, int col) {
-  shiftRight(&brd->tiles[row][col].v, 1);
+  shiftRight(&tileAt(brd, row, col)->v, 1);
   markConnectedFromSource(brd);
 }
 
 int boardValueAt(Board *brd, int row, int col) {
-  return brd->tiles[row][col].v;
+  return tileAt(brd, row, col)->v;
 }
 
 int boardConnectedAt(Board *brd, int row, int col) {
-  return brd->tiles[row][col].connected;
-}
-
-void printBoard(Board *brd) {
-  for (int i = 0; i < brd->rows; i++) {
-    for (int j = 0; j < brd->cols; j++) {
-      printf("%d ", brd->tiles[i][j].v);
-    }
-    printf("\n");
-  }
+  return tileAt(brd, row, col)->connected;
 }
 
 Board *boardMake(int seed, int rows, int cols) {
@@ -238,20 +231,13 @@ Board *boardMake(int seed, int rows, int cols) {
     printf("malloc failed\n");
     exit(1);
   }
-  pBrd->tiles = malloc(sizeof(Tile *) * rows);
+  pBrd->tiles = malloc(sizeof(Tile *) * rows * cols);
   if (pBrd->tiles == NULL) {
     printf("malloc failed\n");
     exit(1);
   }
-  for (int i = 0; i < cols; i++) {
-    pBrd->tiles[i] = malloc(sizeof(Tile) * rows);
-    if (pBrd->tiles[i] == NULL) {
-      printf("malloc failed\n");
-      exit(1);
-    }
-    for (int j = 0; j < cols; j++) {
-      pBrd->tiles[i][j].v = 0;
-    }
+  for (int i = 0; i < rows * cols; i++) {
+    pBrd->tiles[i].v = 0;
   }
   generateBoard(pBrd, seed);
   markConnectedFromSource(pBrd);
@@ -259,9 +245,6 @@ Board *boardMake(int seed, int rows, int cols) {
 }
 
 void boardFree(Board *brd) {
-  for (int i = 0; i < brd->rows; i++) {
-    free(brd->tiles[i]);
-  }
   free(brd->tiles);
   free(brd);
 }
