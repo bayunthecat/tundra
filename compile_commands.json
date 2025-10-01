@@ -68,5 +68,15 @@
     "directory": "/home/vadym/workspace/tundra",
     "command": "gcc -Icollections/queue/include -Itest/include",
     "file": "collections/queue/test/runner.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Ibranch/view/include -Ibranch/model/include",
+    "file": "branch/view/src/view.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Imem/include -Itest/include",
+    "file": "mem/test/runner.c"
   }
 ]
