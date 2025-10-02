@@ -1,10 +1,11 @@
+#include "mem.h"
 #include "queue.h"
 #include "test.h"
-#include <stdio.h>
 #include <stdlib.h>
 
 void testQueueNominal(TestRun *r) {
-  Queue *q = queueMake();
+  Arena *a = arenaMake(1024);
+  Queue *q = queueMake(a);
   int v1 = 100;
   int v2 = 200;
   queueOffer(q, &v1);
@@ -21,12 +22,12 @@ void testQueueNominal(TestRun *r) {
   if (*pollV2 != v2) {
     fail(r, "values do not match");
   }
-  queueFree(q);
+  arenaFree(a);
 }
 
 void populateIntArray(int arr[], int len) {
   for (int i = 0; i < len; i++) {
-    arr[i] = i + 1;
+    arr[i] = rand();
   }
 }
 
@@ -34,7 +35,8 @@ void testQueueLarge(TestRun *r) {
   int len = 100000;
   int random[len];
   populateIntArray(random, len);
-  Queue *q = queueMake();
+  Arena *a = arenaMake(1800000);
+  Queue *q = queueMake(a);
   for (int i = 0; i < len; i++) {
     queueOffer(q, &random[i]);
   }
@@ -47,7 +49,7 @@ void testQueueLarge(TestRun *r) {
       fail(r, "values mismatch");
     }
   }
-  queueFree(q);
+  arenaFree(a);
 }
 
 int main() {

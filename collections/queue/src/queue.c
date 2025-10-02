@@ -1,4 +1,6 @@
 #include "queue.h"
+#include "mem.h"
+#include <stdio.h>
 #include <stdlib.h>
 
 typedef struct Node {
@@ -7,6 +9,7 @@ typedef struct Node {
 } Node;
 
 struct Queue {
+  Arena *arena;
   Node *head;
   Node *tail;
   int len;
@@ -14,16 +17,17 @@ struct Queue {
 
 int queueLen(Queue *q) { return q->len; }
 
-Queue *queueMake() {
-  Queue *q = malloc(sizeof(Queue));
+Queue *queueMake(Arena *a) {
+  Queue *q = arenaAlloc(a, sizeof(Queue));
   q->tail = NULL;
   q->head = NULL;
   q->len = 0;
+  q->arena = a;
   return q;
 }
 
 void queueOffer(Queue *q, void *val) {
-  Node *new = malloc(sizeof(Node));
+  Node *new = arenaAlloc(q->arena, sizeof(Node));
   new->data = val;
   new->next = NULL;
   Node *tail = q->tail;
@@ -48,17 +52,5 @@ void *queuePoll(Queue *q) {
   if (q->head == NULL) {
     q->tail = NULL;
   }
-  free(head);
   return d;
-}
-
-void queueFree(Queue *q) {
-  Node *head = q->head;
-  while (head != NULL) {
-    free(head->data);
-    Node *tmp = head->next;
-    free(head);
-    head = tmp;
-  }
-  free(q);
 }

@@ -1,3 +1,4 @@
+#include "mem.h"
 #include "model.h"
 #include "queue.h"
 #include <endian.h>
@@ -79,7 +80,8 @@ void generateBoard(Board *brd, int seed) {
   srand(seed);
   int **visited = make2DIntArray(brd->rows, brd->cols);
   int **reserved = make2DIntArray(brd->rows, brd->cols);
-  Queue *q = queueMake();
+  Arena *qArena = arenaMake(16 * brd->rows * brd->cols + 100);
+  Queue *q = queueMake(qArena);
   Coord *start = makeCoord(brd->source.i, brd->source.j);
   queueOffer(q, start);
   int len;
@@ -165,7 +167,7 @@ void generateBoard(Board *brd, int seed) {
   }
   free2DIntArray(visited, brd->rows, brd->rows);
   free2DIntArray(reserved, brd->cols, brd->cols);
-  queueFree(q);
+  arenaFree(qArena);
 }
 
 void resetConnected(Board *brd) {
