@@ -84,6 +84,8 @@ void generateBoard(Board *brd, int seed) {
   Queue *q = queueMake(qArena);
   Coord *start = makeCoord(brd->source.i, brd->source.j);
   queueOffer(q, start);
+  int size = 10;
+  int arr[size];
   int len;
   while ((len = queueLen(q)) != 0) {
     for (int i = 0; i < len; i++) {
