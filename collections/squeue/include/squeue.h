@@ -8,7 +8,7 @@ typedef struct SQueue {
   void **data;
 } SQueue;
 
-void sQeueuInit(SQueue *sq, void **storage, int cap);
+void sQueueInit(SQueue *sq, void **storage, int cap);
 
 int len(SQueue *sq);
 

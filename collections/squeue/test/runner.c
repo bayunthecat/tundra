@@ -5,7 +5,7 @@ void testSQueueNominal(TestRun *r) {
   int stoargeSize = 10;
   SQueue q = {};
   void *storage[stoargeSize];
-  sQeueuInit(&q, storage, stoargeSize);
+  sQueueInit(&q, storage, stoargeSize);
   int offerOne = 1, offerTwo = 2;
   sQueueOffer(&q, &offerOne);
   sQueueOffer(&q, &offerTwo);
@@ -23,7 +23,7 @@ void testSQueueWrapAround(TestRun *r) {
   int storeSize = 3;
   SQueue q = {};
   void *storage[storeSize];
-  sQeueuInit(&q, storage, storeSize);
+  sQueueInit(&q, storage, storeSize);
   int offerOne = 1, offerTwo = 2, offerThree = 3;
   sQueueOffer(&q, &offerOne);
   sQueueOffer(&q, &offerTwo);

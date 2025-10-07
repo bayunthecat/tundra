@@ -1,6 +1,5 @@
-#include "mem.h"
 #include "model.h"
-#include "queue.h"
+#include "squeue.h"
 #include <endian.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -80,16 +79,19 @@ void generateBoard(Board *brd, int seed) {
   srand(seed);
   int **visited = make2DIntArray(brd->rows, brd->cols);
   int **reserved = make2DIntArray(brd->rows, brd->cols);
-  Arena *qArena = arenaMake(16 * brd->rows * brd->cols + 100);
-  Queue *q = queueMake(qArena);
+  int qCap = brd->rows * brd->cols;
+  void *storage[qCap];
+  SQueue sq;
+  SQueue *q = &sq;
+  sQueueInit(q, storage, qCap);
   Coord *start = makeCoord(brd->source.i, brd->source.j);
-  queueOffer(q, start);
+  sQueueOffer(q, start);
   int size = 10;
   int arr[size];
   int len;
-  while ((len = queueLen(q)) != 0) {
+  while ((len = q->len) != 0) {
     for (int i = 0; i < len; i++) {
-      Coord *p = queuePoll(q);
+      Coord *p = sQueuePoll(q);
       if (visited[p->i][p->j]) {
         free(p);
         continue;
@@ -133,7 +135,7 @@ void generateBoard(Board *brd, int seed) {
           genValue = genValue | 0b1000;
           reserved[p->i][p->j - 1] = 1;
           Coord *o = makeCoord(p->i, p->j - 1);
-          queueOffer(q, o);
+          sQueueOffer(q, o);
         }
       }
       if (p->i - 1 >= 0) {
@@ -142,7 +144,7 @@ void generateBoard(Board *brd, int seed) {
           genValue = genValue | 0b0100;
           reserved[p->i - 1][p->j] = 1;
           Coord *o = makeCoord(p->i - 1, p->j);
-          queueOffer(q, o);
+          sQueueOffer(q, o);
         }
       }
       if (p->j + 1 < brd->cols) {
@@ -151,7 +153,7 @@ void generateBoard(Board *brd, int seed) {
           genValue = genValue | 0b0010;
           reserved[p->i][p->j + 1] = 1;
           Coord *o = makeCoord(p->i, p->j + 1);
-          queueOffer(q, o);
+          sQueueOffer(q, o);
         }
       }
       if (p->i + 1 < brd->rows) {
@@ -160,7 +162,7 @@ void generateBoard(Board *brd, int seed) {
           genValue = genValue | 0b0001;
           Coord *o = makeCoord(p->i + 1, p->j);
           reserved[p->i + 1][p->j] = 1;
-          queueOffer(q, o);
+          sQueueOffer(q, o);
         }
       }
       tileAt(brd, p->i, p->j)->v = genValue;
@@ -169,7 +171,6 @@ void generateBoard(Board *brd, int seed) {
   }
   free2DIntArray(visited, brd->rows, brd->rows);
   free2DIntArray(reserved, brd->cols, brd->cols);
-  arenaFree(qArena);
 }
 
 void resetConnected(Board *brd) {

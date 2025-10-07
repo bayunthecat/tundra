@@ -51,7 +51,7 @@
   },
   {
     "directory": "/home/vadym/workspace/tundra",
-    "command": "gcc -Ibranch/model/include -Icollections/queue/include -Imem/include",
+    "command": "gcc -Ibranch/model/include -Icollections/squeue/include",
     "file": "branch/model/src/board.c"
   },
   {

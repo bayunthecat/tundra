@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void sQeueuInit(SQueue *sq, void **storage, int capacity) {
+void sQueueInit(SQueue *sq, void **storage, int capacity) {
   sq->tail = 0;
   sq->len = 0;
   sq->cap = capacity;
