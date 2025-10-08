@@ -12,15 +12,15 @@ void testQueueNominal(TestRun *r) {
   queueOffer(q, &v2);
   int len = queueLen(q);
   if (len != 2) {
-    fail(r, "want len 2, got another");
+    testFail(r, "want len 2, got another");
   }
   int *pollV1 = queuePoll(q);
   if (*pollV1 != v1) {
-    fail(r, "values do not match");
+    testFail(r, "values do not match");
   }
   int *pollV2 = queuePoll(q);
   if (*pollV2 != v2) {
-    fail(r, "values do not match");
+    testFail(r, "values do not match");
   }
   arenaFree(a);
 }
@@ -46,7 +46,7 @@ void testQueueLarge(TestRun *r) {
     pPolled = queuePoll(q);
     polled = *pPolled;
     if (polled != random[i]) {
-      fail(r, "values mismatch");
+      testFail(r, "values mismatch");
     }
   }
   arenaFree(a);
@@ -54,8 +54,8 @@ void testQueueLarge(TestRun *r) {
 
 int main() {
   TestSuite *s = testSuiteMake("queue");
-  registerFn(s, "testQueueNominal", testQueueNominal);
-  registerFn(s, "testQueueLarge", testQueueLarge);
-  run(s);
+  testRegisterFn(s, "testQueueNominal", testQueueNominal);
+  testRegisterFn(s, "testQueueLarge", testQueueLarge);
+  testRun(s);
   testSuiteFree(s);
 }

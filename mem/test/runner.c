@@ -17,24 +17,24 @@ void testMemoryNominal(TestRun *r) {
   pTs->i = 123;
   pTs->c = 's';
   if (*pI != 10) {
-    fail(r, "value mismatch");
+    testFail(r, "value mismatch");
   }
   if (*pC != 'a') {
-    fail(r, "value mismatch");
+    testFail(r, "value mismatch");
   }
   if (pTs->i != 123) {
-    fail(r, "value mismatch");
+    testFail(r, "value mismatch");
   }
   if (pTs->c != 's') {
-    fail(r, "value mismatch");
+    testFail(r, "value mismatch");
   }
   arenaFree(a);
 }
 
 int main() {
   TestSuite *s = testSuiteMake("memory");
-  registerFn(s, "testMemoryNominal", testMemoryNominal);
-  run(s);
+  testRegisterFn(s, "testMemoryNominal", testMemoryNominal);
+  testRun(s);
   testSuiteFree(s);
   return 0;
 }

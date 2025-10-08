@@ -12,10 +12,10 @@ void testSQueueNominal(TestRun *r) {
   int pollOne = *(int *)sQueuePoll(&q);
   int pollTwo = *(int *)sQueuePoll(&q);
   if (pollOne != offerOne) {
-    fail(r, "values mismatch");
+    testFail(r, "values mismatch");
   }
   if (pollTwo != offerTwo) {
-    fail(r, "values mismatch");
+    testFail(r, "values mismatch");
   }
 }
 
@@ -30,7 +30,7 @@ void testSQueueWrapAround(TestRun *r) {
   sQueueOffer(&q, &offerThree);
   int pollOne = *(int *)sQueuePoll(&q);
   if (pollOne != offerOne) {
-    fail(r, "values mismatch");
+    testFail(r, "values mismatch");
   }
   int offerFour = 4;
   sQueueOffer(&q, &offerFour);
@@ -38,15 +38,15 @@ void testSQueueWrapAround(TestRun *r) {
   sQueuePoll(&q);
   int pollFour = *(int *)sQueuePoll(&q);
   if (pollFour != offerFour) {
-    fail(r, "values mismatch");
+    testFail(r, "values mismatch");
   }
 }
 
 int main() {
   TestSuite *s = testSuiteMake("squeue");
-  registerFn(s, "testSQueueNominal", testSQueueNominal);
-  registerFn(s, "testSQueueWrapAround", testSQueueWrapAround);
-  run(s);
+  testRegisterFn(s, "testSQueueNominal", testSQueueNominal);
+  testRegisterFn(s, "testSQueueWrapAround", testSQueueWrapAround);
+  testRun(s);
   testSuiteFree(s);
   return 0;
 }

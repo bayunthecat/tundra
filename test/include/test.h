@@ -1,6 +1,7 @@
 #ifndef TEST_H
 #define TEST_H
 
+#include <stddef.h>
 typedef struct TestSuite TestSuite;
 
 typedef struct TestRun TestRun;
@@ -11,10 +12,13 @@ TestSuite *testSuiteMake(char *name);
 
 void testSuiteFree(TestSuite *s);
 
-void registerFn(TestSuite *s, char *name, test);
+void testRegisterFn(TestSuite *s, char *name, test);
 
-void fail(TestRun *s, char *reason);
+void testFail(TestRun *r, char *reason);
 
-void run(TestSuite *s);
+void testVerify(TestRun *r, void *want, size_t wantSize, void *got,
+                size_t gotSize);
+
+void testRun(TestSuite *s);
 
 #endif // !TEST_H

@@ -7,7 +7,7 @@ void testSliceNominal(TestRun *r) {
   sliceAppend(s, "hello");
   char *val = sliceGet(s, 0);
   if (strcmp(val, "hello") != 0) {
-    fail(r, "Error getting the value from the slice");
+    testFail(r, "Error getting the value from the slice");
   }
   sliceFree(s);
 }
@@ -20,16 +20,16 @@ void testSliceGrow(TestRun *r) {
   }
   int newLen = sliceLen(s);
   if (newLen != len) {
-    fail(r, "want one, got another");
+    testFail(r, "want one, got another");
   }
   sliceFree(s);
 }
 
 int main() {
   TestSuite *s = testSuiteMake("slice");
-  registerFn(s, "testSliceNominal", testSliceNominal);
-  registerFn(s, "testSliceGrow", testSliceGrow);
-  run(s);
+  testRegisterFn(s, "testSliceNominal", testSliceNominal);
+  testRegisterFn(s, "testSliceGrow", testSliceGrow);
+  testRun(s);
   testSuiteFree(s);
   return 0;
 }

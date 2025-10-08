@@ -13,16 +13,16 @@ void testBoardNominal(TestRun *r) {
   };
   Board *brd = boardMake(seed, 4, 4);
   if (brd == NULL) {
-    fail(r, "failed to create the board");
+    testFail(r, "failed to create the board");
   }
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
       int v = boardValueAt(brd, i, j);
       if (boardVals[i][j] != v) {
-        fail(r, "board values mismatch");
+        testFail(r, "board values mismatch");
       }
       if (v != 0 && !boardConnectedAt(brd, i, j)) {
-        fail(r, "expected connected");
+        testFail(r, "expected connected");
       }
     }
   }
@@ -45,17 +45,17 @@ void testRotate(TestRun *r) {
   };
   Board *brd = boardMake(seed, 4, 4);
   if (brd == NULL) {
-    fail(r, "failed to create the board");
+    testFail(r, "failed to create the board");
   }
   boardRotateAt(brd, 0, 1);
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
       int v = boardValueAt(brd, i, j);
       if (boardVals[i][j] != v) {
-        fail(r, "board values mismatch");
+        testFail(r, "board values mismatch");
       }
       if (connVals[i][j] != boardConnectedAt(brd, i, j)) {
-        fail(r, "expected connected");
+        testFail(r, "expected connected");
       }
     }
   }
@@ -64,9 +64,9 @@ void testRotate(TestRun *r) {
 
 int main() {
   TestSuite *s = testSuiteMake("model");
-  registerFn(s, "testBoardNominal", testBoardNominal);
-  registerFn(s, "testRotate", testRotate);
-  run(s);
+  testRegisterFn(s, "testBoardNominal", testBoardNominal);
+  testRegisterFn(s, "testRotate", testRotate);
+  testRun(s);
   testSuiteFree(s);
   return 0;
 }

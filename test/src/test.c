@@ -1,6 +1,7 @@
 #include "test.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct {
   test fn;
@@ -40,7 +41,7 @@ TestSuite *testSuiteMake(char *name) {
   return s;
 }
 
-void run(TestSuite *s) {
+void testRun(TestSuite *s) {
   printf("===== %s =====\n", s->name);
   TestRun run;
   run.s = s;
@@ -55,7 +56,10 @@ void run(TestSuite *s) {
   printf("\n%d out of %d tests PASS\n", pass, s->caseCount);
 }
 
-void registerFn(TestSuite *s, char *name, test fn) {
+void verify(TestRun *r, void *want, size_t wantSize, void *got,
+            size_t gotSize) {}
+
+void testRegisterFn(TestSuite *s, char *name, test fn) {
   int idx = s->caseCount;
   if (idx >= s->capacity) {
     int newCap = s->capacity * 1.5;
@@ -68,19 +72,27 @@ void registerFn(TestSuite *s, char *name, test fn) {
   TestCase *c = &s->cases[idx];
   c->status = "PASS";
   c->fnName = name;
-  c->reason = "";
+  c->reason = strdup("");
   c->fn = fn;
   s->caseCount++;
 }
 
-void fail(TestRun *r, char *reason) {
+void testFail(TestRun *r, char *reason) {
   TestCase *c = &r->s->cases[r->idx];
   c->status = "FAIL";
-  c->reason = reason;
+  char *reasonDup = strdup(reason);
+  if (!reasonDup) {
+    fprintf(stderr, "string duplication failed\n");
+    exit(1);
+  }
+  c->reason = reasonDup;
   r->s->failCount++;
 }
 
 void testSuiteFree(TestSuite *s) {
+  for (int i = 0; i < s->caseCount; i++) {
+    free(s->cases[i].reason);
+  }
   free(s->cases);
   free(s);
 }
