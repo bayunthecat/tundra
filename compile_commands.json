@@ -61,17 +61,17 @@
   },
   {
     "directory": "/home/vadym/workspace/tundra",
-    "command": "gcc -Imem/include",
+    "command": "gcc -Imemory/include",
     "file": "collections/queue/include/queue.h"
   },
   {
     "directory": "/home/vadym/workspace/tundra",
-    "command": "gcc -Icollections/queue/include -Imem/include",
+    "command": "gcc -Icollections/queue/include -Imemory/include",
     "file": "collections/queue/src/queue.c"
   },
   {
     "directory": "/home/vadym/workspace/tundra",
-    "command": "gcc -Icollections/queue/include -Imem/include -Itest/include",
+    "command": "gcc -Icollections/queue/include -Imemory/include -Itest/include",
     "file": "collections/queue/test/runner.c"
   },
   {
@@ -81,8 +81,8 @@
   },
   {
     "directory": "/home/vadym/workspace/tundra",
-    "command": "gcc -Imem/include -Itest/include",
-    "file": "mem/test/runner.c"
+    "command": "gcc -Imemory/include -Itest/include",
+    "file": "memory/test/runner.c"
   },
   {
     "directory": "/home/vadym/workspace/tundra",

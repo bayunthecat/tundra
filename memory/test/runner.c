@@ -1,17 +1,18 @@
-#include "mem.h"
+#include "allocator.h"
 #include "test.h"
 #include <stddef.h>
+#include <stdlib.h>
 
 typedef struct {
   int i;
   char c;
 } TestStruct;
 
-void testMemoryNominal(TestRun *r) {
-  Arena *a = arenaMake(100);
-  int *pI = arenaAlloc(a, sizeof(int));
-  char *pC = arenaAlloc(a, sizeof(char));
-  TestStruct *pTs = arenaAlloc(a, sizeof(TestStruct));
+void testArenaAllocatorNominal(TestRun *r) {
+  Allocator *arena = allocatorArena(1024);
+  int *pI = arena->alloc(arena, sizeof(int));
+  char *pC = arena->alloc(arena, sizeof(char));
+  TestStruct *pTs = arena->alloc(arena, sizeof(TestStruct));
   *pI = 10;
   *pC = 'a';
   pTs->i = 123;
@@ -28,12 +29,12 @@ void testMemoryNominal(TestRun *r) {
   if (pTs->c != 's') {
     testFail(r, "value mismatch");
   }
-  arenaFree(a);
+  free(arena);
 }
 
 int main() {
-  TestSuite *s = testSuiteMake("memory");
-  testRegisterFn(s, "testMemoryNominal", testMemoryNominal);
+  TestSuite *s = testSuiteMake("arena allocator");
+  testRegisterFn(s, "testArenaAllocatorNominal", testArenaAllocatorNominal);
   testRun(s);
   testSuiteFree(s);
   return 0;
