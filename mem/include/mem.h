@@ -1,4 +1,5 @@
 #ifndef MEM_H
+#define MEM_H
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -11,4 +12,4 @@ void *arenaAlloc(Arena *a, size_t size);
 
 void arenaFree(Arena *a);
 
-#endif // !MEMORY_H
+#endif // !MEM_H

@@ -1,4 +1,5 @@
 #ifndef SQUEUE_H
+#define SQUEUE_H
 
 typedef struct SQueue {
   int len;
