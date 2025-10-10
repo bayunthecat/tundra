@@ -10,9 +10,9 @@ typedef struct {
 
 void testArenaAllocatorNominal(TestRun *r) {
   Allocator *arena = allocatorArena(1024);
-  int *pI = arena->alloc(arena, sizeof(int));
-  char *pC = arena->alloc(arena, sizeof(char));
-  TestStruct *pTs = arena->alloc(arena, sizeof(TestStruct));
+  int *pI = alloc(arena, sizeof(int));
+  char *pC = alloc(arena, sizeof(char));
+  TestStruct *pTs = alloc(arena, sizeof(TestStruct));
   *pI = 10;
   *pC = 'a';
   pTs->i = 123;

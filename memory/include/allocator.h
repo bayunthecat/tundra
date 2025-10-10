@@ -15,4 +15,8 @@ Allocator *allocatorStd();
 
 Allocator *allocatorStack(void *buffer, size_t size);
 
+void *alloc(Allocator *a, size_t size);
+
+void dealloc(Allocator *a, void *ptr);
+
 #endif // !ALLOCATOR_H
