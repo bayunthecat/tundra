@@ -2,6 +2,7 @@
 #define TEST_H
 
 #include <stddef.h>
+
 typedef struct TestSuite TestSuite;
 
 typedef struct TestRun TestRun;
@@ -16,8 +17,7 @@ void testRegisterFn(TestSuite *s, char *name, test);
 
 void testFail(TestRun *r, char *reason);
 
-void testVerify(TestRun *r, void *want, size_t wantSize, void *got,
-                size_t gotSize);
+void testVerify(TestRun *r, void *want, size_t wantS, void *got, size_t gotS);
 
 void testRun(TestSuite *s);
 
