@@ -1,6 +1,5 @@
 #include "model.h"
 #include "test.h"
-#include <stdio.h>
 #include <stdlib.h>
 
 void testBoardNominal(TestRun *r) {

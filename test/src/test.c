@@ -6,23 +6,6 @@
 #include <string.h>
 
 typedef struct {
-  uint8_t *memory;
-  size_t offset;
-  size_t capacity;
-} StringPool;
-
-char *buff(size_t size, StringPool *pool) {
-  if (pool->offset + size < pool->capacity) {
-    void *b = pool->memory + pool->offset;
-    memset(b, 0, size);
-    pool->offset += size;
-    return b;
-  }
-  fprintf(stderr, "test string pool is out of memory");
-  exit(1);
-}
-
-typedef struct {
   test fn;
   char *fnName;
   char *status;
@@ -35,7 +18,6 @@ struct TestSuite {
   int caseCount;
   int capacity;
   int failCount;
-  StringPool *pool;
 };
 
 struct TestRun {
@@ -53,14 +35,10 @@ TestSuite *testSuiteMake(char *name) {
   s->failCount = 0;
   s->name = name;
   s->capacity = 20;
-
   s->cases = malloc(sizeof(TestCase) * s->capacity);
   if (!s->cases) {
     fprintf(stderr, "Failed to allocate test suite cases");
   }
-  // TODO need improvement
-  s->pool = malloc(sizeof(StringPool));
-  s->pool->memory = malloc(1024);
   return s;
 }
 
@@ -79,13 +57,6 @@ void testRun(TestSuite *s) {
   printf("\n%d out of %d tests PASS\n", pass, s->caseCount);
 }
 
-char *makeString(TestRun *r, char *want, char *got) {
-  int size = snprintf(NULL, 0, "want: %s, got: %s\n", want, got) + 1;
-  char *b = buff(size, r->s->pool);
-  snprintf(b, size, "want: %s, got: %s", want, got);
-  return b;
-}
-
 void verify(TestRun *r, void *want, size_t wantS, void *got, size_t gotS) {
   if (wantS != gotS) {
     testFail(r, "size mismatch");
@@ -96,7 +67,7 @@ void verify(TestRun *r, void *want, size_t wantS, void *got, size_t gotS) {
   int index;
   while (index < wantS) {
     if (cWant[index] != cGot[index]) {
-      testFail(r, makeString(r, cWant, cGot));
+      testFail(r, "failed");
     }
     index++;
   }

@@ -93,5 +93,10 @@
     "directory": "/home/vadym/workspace/tundra",
     "command": "gcc -Icollections/squeue/include -Itest/include",
     "file": "collections/squeue/test/runner.c"
+  },
+  {
+    "directory": "/home/vadym/workspace/tundra",
+    "command": "gcc -Imemory/include -Itest/include",
+    "file": "test/src/test.c"
   }
 ]

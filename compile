@@ -1,0 +1,1 @@
+gcc -g -fsanitize=address -Ibranch/model/include -Itest/include -Icollections/squeue/include branch/model/src/board.c branch/model/test/runner.c collections/squeue/src/squeue.c test/src/test.c -o branch-test
