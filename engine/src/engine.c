@@ -790,6 +790,7 @@ void createBuffer(Engine *e, VkDeviceSize size, VkBufferUsageFlags usage,
     printf("error creating buffer\n");
     exit(1);
   }
+  printf("creating buffer: %p\n", *buffer);
   VkMemoryRequirements memReq;
   vkGetBufferMemoryRequirements(e->device, *buffer, &memReq);
 
@@ -1018,6 +1019,7 @@ void createTextureImage(Engine *e) {
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
   copyBufferToImage(e, stage, e->textureImage, texWidth, texHeight);
   generateMipmaps(e, e->textureImage, texWidth, texHeight, e->mipLevels);
+  vkDestroyBuffer(e->device, stage, NULL);
 }
 
 void createTextureImageView(Engine *e) {
@@ -1541,6 +1543,24 @@ void destroyFramebuffers(Engine *e) {
   free(e->framebuffers);
 }
 
+void destroyUniformBuffers(Engine *e) {
+  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    vkDestroyBuffer(e->device, e->uniformBuffers[i], NULL);
+  }
+}
+
+void destroySemaphores(Engine *e, VkSemaphore *semaphores) {
+  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    vkDestroySemaphore(e->device, semaphores[i], NULL);
+  }
+}
+
+void destroyFences(Engine *e, VkFence *fences) {
+  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    vkDestroyFence(e->device, fences[i], NULL);
+  }
+}
+
 void freeEngine(Engine *engine) {
   vkDestroySwapchainKHR(engine->device, engine->swapchain, NULL);
   destroySwapchainImages(engine);
@@ -1553,6 +1573,14 @@ void freeEngine(Engine *engine) {
   vkDestroyPipeline(engine->device, engine->pipeline, NULL);
   vkDestroyDescriptorSetLayout(engine->device, engine->descriptorLayout, NULL);
   vkDestroyCommandPool(engine->device, engine->commandPool, NULL);
+  vkDestroyBuffer(engine->device, engine->indexBuffer, NULL);
+  vkDestroyBuffer(engine->device, engine->modelBuffer, NULL);
+  vkDestroyBuffer(engine->device, engine->modelIndiciesBuffer, NULL);
+  destroyUniformBuffers(engine);
+  vkDestroyImage(engine->device, engine->textureImage, NULL);
+  destroySemaphores(engine, engine->imageAvailableSemaphores);
+  destroySemaphores(engine, engine->renderFinishedSemaphores);
+  destroyFences(engine, engine->inFlight);
   vkDestroyDevice(engine->device, NULL);
   vkDestroyInstance(engine->instance, NULL);
   glfwTerminate();
