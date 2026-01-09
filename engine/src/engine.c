@@ -81,8 +81,6 @@ struct Engine {
 
   VkBuffer indexBuffer;
 
-  VkDeviceMemory indexBufferMemory;
-
   VkBuffer *uniformBuffers;
 
   VkDeviceMemory *uniformBuffersMemoryList;
@@ -114,8 +112,6 @@ struct Engine {
   uint32_t modelIndicesNum;
 
   VkBuffer modelIndiciesBuffer;
-
-  VkDeviceMemory modelIndicesBufferMemory;
 
   VkSampleCountFlagBits msaaSample;
 
@@ -1020,6 +1016,7 @@ void createTextureImage(Engine *e) {
   copyBufferToImage(e, stage, e->textureImage, texWidth, texHeight);
   generateMipmaps(e, e->textureImage, texWidth, texHeight, e->mipLevels);
   vkDestroyBuffer(e->device, stage, NULL);
+  vkFreeMemory(e->device, stageMem, NULL);
 }
 
 void createTextureImageView(Engine *e) {
@@ -1546,6 +1543,7 @@ void destroyFramebuffers(Engine *e) {
 void destroyUniformBuffers(Engine *e) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroyBuffer(e->device, e->uniformBuffers[i], NULL);
+    vkFreeMemory(e->device, e->uniformBuffersMemoryList[i], NULL);
   }
 }
 
@@ -1575,12 +1573,17 @@ void freeEngine(Engine *engine) {
   vkDestroyCommandPool(engine->device, engine->commandPool, NULL);
   vkDestroyBuffer(engine->device, engine->indexBuffer, NULL);
   vkDestroyBuffer(engine->device, engine->modelBuffer, NULL);
+  vkFreeMemory(engine->device, engine->modelBufferMemory, NULL);
   vkDestroyBuffer(engine->device, engine->modelIndiciesBuffer, NULL);
   destroyUniformBuffers(engine);
   vkDestroyImage(engine->device, engine->textureImage, NULL);
   destroySemaphores(engine, engine->imageAvailableSemaphores);
   destroySemaphores(engine, engine->renderFinishedSemaphores);
   destroyFences(engine, engine->inFlight);
+  vkFreeMemory(engine->device, engine->textureMem, NULL);
+  vkDestroyDescriptorPool(engine->device, engine->descriptorPool, NULL);
+  vkDestroyImageView(engine->device, engine->textureImageView, NULL);
+  vkDestroySampler(engine->device, engine->textureSampler, NULL);
   vkDestroyDevice(engine->device, NULL);
   vkDestroyInstance(engine->instance, NULL);
   glfwTerminate();
