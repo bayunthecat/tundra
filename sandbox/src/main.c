@@ -1,7 +1,7 @@
-#include "engine.h"
+#include "sandbox.h"
 
 int main() {
-  Engine *e = makeEngine();
+  Sandbox *e = makeEngine();
   run(e);
   freeEngine(e);
   return 0;

@@ -18,12 +18,12 @@ typedef struct {
 } Vertex;
 // TODO does no belong here end
 
-typedef struct Engine Engine;
+typedef struct Sandbox Sandbox;
 
-Engine *makeEngine();
+Sandbox *makeEngine();
 
-void run(Engine *engine);
+void run(Sandbox *engine);
 
-void freeEngine(Engine *engine);
+void freeEngine(Sandbox *engine);
 
 #endif // !ENGINE_H

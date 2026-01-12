@@ -4,7 +4,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
 #define TINYOBJ_LOADER_C_IMPLEMENTATION
-#include "engine.h"
+#include "sandbox.h"
 #include "stb_image.h"
 #include "tinyobj_loader_c.h"
 #include <GLFW/glfw3.h>
@@ -21,7 +21,7 @@
 
 #define MAX_FRAMES_IN_FLIGHT 2
 
-struct Engine {
+struct Sandbox {
 
   GLFWwindow *window;
 
@@ -158,7 +158,7 @@ void createInstance(VkInstance *instance) {
   }
 }
 
-void createGlfw(Engine *e) {
+void createGlfw(Sandbox *e) {
   glfwInit();
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
@@ -166,7 +166,7 @@ void createGlfw(Engine *e) {
   e->window = glfwCreateWindow(800, 600, "Hello Vulkan", NULL, NULL);
 }
 
-void createSurface(Engine *e) {
+void createSurface(Sandbox *e) {
   printf("creating surface\n");
   VkResult result =
       glfwCreateWindowSurface(e->instance, e->window, NULL, &e->surface);
@@ -176,7 +176,7 @@ void createSurface(Engine *e) {
   }
 }
 
-void pickPhysicalDevice(Engine *e) {
+void pickPhysicalDevice(Sandbox *e) {
   uint32_t deviceCount;
   vkEnumeratePhysicalDevices(e->instance, &deviceCount, NULL);
   if (deviceCount < 1) {
@@ -191,7 +191,7 @@ void pickPhysicalDevice(Engine *e) {
   printf("selected physical device: %p\n", e->physicalDevice);
 }
 
-void createLogicalDevice(Engine *e) {
+void createLogicalDevice(Sandbox *e) {
   printf("creating logical device\n");
   float queuePriority = 1.0f;
   VkDeviceQueueCreateInfo queueCreateInfo = {
@@ -218,12 +218,12 @@ void createLogicalDevice(Engine *e) {
   }
 }
 
-void getDeviceQueues(Engine *e) {
+void getDeviceQueues(Sandbox *e) {
   printf("getting device queue\n");
   vkGetDeviceQueue(e->device, 0, 0, &e->queue);
 }
 
-void createSwapchain(Engine *e) {
+void createSwapchain(Sandbox *e) {
   printf("creating swapchain\n");
   VkSurfaceCapabilitiesKHR surfaceCaps;
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(e->physicalDevice, e->surface,
@@ -274,7 +274,7 @@ void createSwapchain(Engine *e) {
   e->swapchainExtent = extent;
 }
 
-uint32_t findMemoryType(Engine *e, uint32_t typeFilter,
+uint32_t findMemoryType(Sandbox *e, uint32_t typeFilter,
                         VkMemoryPropertyFlags props) {
   VkPhysicalDeviceMemoryProperties memProps = {};
   vkGetPhysicalDeviceMemoryProperties(e->physicalDevice, &memProps);
@@ -288,9 +288,9 @@ uint32_t findMemoryType(Engine *e, uint32_t typeFilter,
   exit(1);
 }
 
-void createImage(Engine *e, uint32_t width, uint32_t height, uint32_t mipLevels,
-                 VkSampleCountFlagBits numSamples, VkFormat format,
-                 VkImageTiling tiling, VkImageUsageFlags usage,
+void createImage(Sandbox *e, uint32_t width, uint32_t height,
+                 uint32_t mipLevels, VkSampleCountFlagBits numSamples,
+                 VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
                  VkMemoryPropertyFlags props, VkImage *image,
                  VkDeviceMemory *imageMemory) {
   VkImageCreateInfo imageInfo = {
@@ -331,7 +331,7 @@ void createImage(Engine *e, uint32_t width, uint32_t height, uint32_t mipLevels,
   vkBindImageMemory(e->device, *image, *imageMemory, 0);
 }
 
-VkImageView createImageView(Engine *e, VkImage image, VkFormat format,
+VkImageView createImageView(Sandbox *e, VkImage image, VkFormat format,
                             VkImageAspectFlags aspectFlags,
                             uint32_t mipLevels) {
   VkImageViewCreateInfo info = {
@@ -356,7 +356,7 @@ VkImageView createImageView(Engine *e, VkImage image, VkFormat format,
   return imageView;
 }
 
-void createImageViews(Engine *e) {
+void createImageViews(Sandbox *e) {
   printf("creating image views\n");
   e->swapchainImageViews = malloc(sizeof(VkImageView) * e->imageCount);
   if (e->swapchainImageViews == NULL) {
@@ -370,7 +370,7 @@ void createImageViews(Engine *e) {
   }
 }
 
-void createRenderPass(Engine *e) {
+void createRenderPass(Sandbox *e) {
   printf("creating render pass\n");
   VkAttachmentDescription colorAttachment = {
       .format = e->swapchainImageFormat,
@@ -452,7 +452,7 @@ void createRenderPass(Engine *e) {
   }
 }
 
-void createDescriptorSetLayout(Engine *e) {
+void createDescriptorSetLayout(Sandbox *e) {
   printf("creating descriptor set layout\n");
   VkDescriptorSetLayoutBinding uboLayoutBinding = {
       .binding = 0,
@@ -541,7 +541,7 @@ void *load(const char *filepath, size_t *size) {
   return content;
 }
 
-VkShaderModule createShaderModule(Engine *e, const char *filepath) {
+VkShaderModule createShaderModule(Sandbox *e, const char *filepath) {
   size_t size;
   uint32_t *code = load(filepath, &size);
   VkShaderModuleCreateInfo info = {
@@ -559,7 +559,7 @@ VkShaderModule createShaderModule(Engine *e, const char *filepath) {
   return module;
 }
 
-void createGraphicsPipeline(Engine *e) {
+void createGraphicsPipeline(Sandbox *e) {
   VkShaderModule triVert =
       createShaderModule(e, "shaders/compiled/tri.vert.spv");
   VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
@@ -702,7 +702,7 @@ void createGraphicsPipeline(Engine *e) {
   vkDestroyShaderModule(e->device, triVert, NULL);
 }
 
-void createCommandPool(Engine *e) {
+void createCommandPool(Sandbox *e) {
   printf("creating command pool\n");
   VkCommandPoolCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -717,7 +717,7 @@ void createCommandPool(Engine *e) {
   }
 }
 
-void createColorResources(Engine *e) {
+void createColorResources(Sandbox *e) {
   printf("creating color resources\n");
   VkFormat colorFormat = e->swapchainImageFormat;
   createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
@@ -730,7 +730,7 @@ void createColorResources(Engine *e) {
                                       VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
 
-void createDepthResources(Engine *e) {
+void createDepthResources(Sandbox *e) {
   printf("creating depth resources\n");
   VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
   createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
@@ -742,7 +742,7 @@ void createDepthResources(Engine *e) {
                                       VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 }
 
-void createFramebuffers(Engine *e) {
+void createFramebuffers(Sandbox *e) {
   printf("creating framebuffers\n");
   e->framebuffers = malloc(sizeof(VkFramebuffer) * e->imageCount);
   if (e->framebuffers == NULL) {
@@ -773,7 +773,7 @@ void createFramebuffers(Engine *e) {
   }
 }
 
-void createBuffer(Engine *e, VkDeviceSize size, VkBufferUsageFlags usage,
+void createBuffer(Sandbox *e, VkDeviceSize size, VkBufferUsageFlags usage,
                   VkMemoryPropertyFlags props, VkBuffer *buffer,
                   VkDeviceMemory *memory) {
   VkBufferCreateInfo info = {
@@ -802,7 +802,7 @@ void createBuffer(Engine *e, VkDeviceSize size, VkBufferUsageFlags usage,
   vkBindBufferMemory(e->device, *buffer, *memory, 0);
 }
 
-VkCommandBuffer beginSingleTimeCommands(Engine *e) {
+VkCommandBuffer beginSingleTimeCommands(Sandbox *e) {
   VkCommandBufferAllocateInfo allocInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
       .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -819,7 +819,7 @@ VkCommandBuffer beginSingleTimeCommands(Engine *e) {
   return commandBuffer;
 }
 
-void endSingleTimeCommands(Engine *e, VkCommandBuffer commandBuffer) {
+void endSingleTimeCommands(Sandbox *e, VkCommandBuffer commandBuffer) {
   vkEndCommandBuffer(commandBuffer);
   VkSubmitInfo submitInfo = {
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -831,7 +831,7 @@ void endSingleTimeCommands(Engine *e, VkCommandBuffer commandBuffer) {
   vkFreeCommandBuffers(e->device, e->commandPool, 1, &commandBuffer);
 }
 
-void transitionImageLayout(Engine *e, VkImage image, VkFormat format,
+void transitionImageLayout(Sandbox *e, VkImage image, VkFormat format,
                            VkImageLayout oldLayout, VkImageLayout newLayout,
                            uint32_t mipLevels) {
   VkCommandBuffer cmdBuff = beginSingleTimeCommands(e);
@@ -879,7 +879,7 @@ void transitionImageLayout(Engine *e, VkImage image, VkFormat format,
   endSingleTimeCommands(e, cmdBuff);
 }
 
-void copyBufferToImage(Engine *e, VkBuffer buffer, VkImage image,
+void copyBufferToImage(Sandbox *e, VkBuffer buffer, VkImage image,
                        uint32_t width, uint32_t height) {
   VkCommandBuffer cmdBuff = beginSingleTimeCommands(e);
   VkBufferImageCopy region = {
@@ -901,7 +901,7 @@ void copyBufferToImage(Engine *e, VkBuffer buffer, VkImage image,
   endSingleTimeCommands(e, cmdBuff);
 }
 
-void generateMipmaps(Engine *e, VkImage image, uint32_t texWidth,
+void generateMipmaps(Sandbox *e, VkImage image, uint32_t texWidth,
                      uint32_t texHeight, uint32_t mipLevels) {
   printf("generateMipmaps\n");
   // Skip checking physical device format capabilities
@@ -984,7 +984,7 @@ void generateMipmaps(Engine *e, VkImage image, uint32_t texWidth,
   endSingleTimeCommands(e, commandBuffer);
 }
 
-void createTextureImage(Engine *e) {
+void createTextureImage(Sandbox *e) {
   printf("creating texture image\n");
   int texWidth, texHeight, texChannels;
   stbi_uc *pixels = stbi_load("assets/viking_room.png", &texWidth, &texHeight,
@@ -1019,14 +1019,14 @@ void createTextureImage(Engine *e) {
   vkFreeMemory(e->device, stageMem, NULL);
 }
 
-void createTextureImageView(Engine *e) {
+void createTextureImageView(Sandbox *e) {
   printf("creating texture image view\n");
   e->textureImageView =
       createImageView(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                       VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels);
 }
 
-void createTextureSampler(Engine *e) {
+void createTextureSampler(Sandbox *e) {
   printf("creating texture sampler\n");
   VkPhysicalDeviceProperties props = {};
   vkGetPhysicalDeviceProperties(e->physicalDevice, &props);
@@ -1055,7 +1055,7 @@ void createTextureSampler(Engine *e) {
   }
 }
 
-void createUniformBuffers(Engine *e) {
+void createUniformBuffers(Sandbox *e) {
   printf("creating uniform buffers\n");
   VkDeviceSize bufferSize = sizeof(UniformBufferObject);
   e->uniformBuffers = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
@@ -1084,7 +1084,7 @@ void createUniformBuffers(Engine *e) {
   }
 }
 
-void createDescriptorPool(Engine *e) {
+void createDescriptorPool(Sandbox *e) {
   printf("creating descriptor pool\n");
   VkDescriptorPoolSize poolSize = {
       .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -1111,7 +1111,7 @@ void createDescriptorPool(Engine *e) {
   };
 }
 
-void createDescriptorSets(Engine *e) {
+void createDescriptorSets(Sandbox *e) {
   printf("creating descriptor sets\n");
   VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1167,7 +1167,7 @@ void createDescriptorSets(Engine *e) {
   }
 }
 
-void createCommandBuffers(Engine *e) {
+void createCommandBuffers(Sandbox *e) {
   e->commandBuffers = malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkCommandBuffer));
   if (e->commandBuffers == NULL) {
     printf("malloc failed\n");
@@ -1187,7 +1187,7 @@ void createCommandBuffers(Engine *e) {
   }
 }
 
-void createSyncObjects(Engine *e) {
+void createSyncObjects(Sandbox *e) {
   printf("creating sync objects\n");
   e->imageAvailableSemaphores =
       malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
@@ -1235,7 +1235,7 @@ void createSyncObjects(Engine *e) {
   }
 }
 
-void copyBuffer(Engine *e, VkBuffer srcBuffer, VkBuffer dstBuffer,
+void copyBuffer(Sandbox *e, VkBuffer srcBuffer, VkBuffer dstBuffer,
                 VkDeviceSize size) {
   VkCommandBufferAllocateInfo allocInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -1323,7 +1323,7 @@ void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
   *vertices = v;
 }
 
-void updateUniformBuffer(Engine *e, uint32_t currentImage) {
+void updateUniformBuffer(Sandbox *e, uint32_t currentImage) {
   if (e->start == 0) {
     e->start = clock();
   }
@@ -1351,7 +1351,7 @@ void updateUniformBuffer(Engine *e, uint32_t currentImage) {
   memcpy(e->uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }
 
-void recordCommandBuffer(Engine *e, VkCommandBuffer commandBuffer,
+void recordCommandBuffer(Sandbox *e, VkCommandBuffer commandBuffer,
                          uint32_t imageIndex) {
   VkCommandBufferBeginInfo begingInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1409,7 +1409,7 @@ void recordCommandBuffer(Engine *e, VkCommandBuffer commandBuffer,
   }
 }
 
-void drawFrame(Engine *e) {
+void drawFrame(Sandbox *e) {
   vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
                   UINT64_MAX);
   uint32_t imageIndex;
@@ -1455,7 +1455,7 @@ void drawFrame(Engine *e) {
   e->currentFrame = (e->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void createModelBuffer(Engine *e) {
+void createModelBuffer(Sandbox *e) {
   VkBuffer stagingBuffer;
   VkDeviceMemory stagingMemory;
   VkDeviceSize bufferSize = sizeof(Vertex) * e->modelVerticesNum;
@@ -1480,8 +1480,8 @@ void createModelBuffer(Engine *e) {
 
 // TODO mess end
 
-Engine *makeEngine() {
-  Engine *e = malloc(sizeof(Engine));
+Sandbox *makeEngine() {
+  Sandbox *e = malloc(sizeof(Sandbox));
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
   createGlfw(e);
@@ -1512,7 +1512,7 @@ Engine *makeEngine() {
   return e;
 }
 
-void destroySwapchainImages(Engine *e) {
+void destroySwapchainImages(Sandbox *e) {
   for (uint32_t i = 0; i < e->imageCount; i++) {
     // swapchain images are destroyed along with swapchain
     vkDestroyImageView(e->device, e->swapchainImageViews[i], NULL);
@@ -1521,45 +1521,45 @@ void destroySwapchainImages(Engine *e) {
   free(e->swapchainImageViews);
 }
 
-void destroyColorResources(Engine *e) {
+void destroyColorResources(Sandbox *e) {
   vkDestroyImageView(e->device, e->colorImageView, NULL);
   vkDestroyImage(e->device, e->colorImage, NULL);
   vkFreeMemory(e->device, e->colorImageMemory, NULL);
 }
 
-void destroyDepthResources(Engine *e) {
+void destroyDepthResources(Sandbox *e) {
   vkDestroyImageView(e->device, e->depthImageView, NULL);
   vkDestroyImage(e->device, e->depthImage, NULL);
   vkFreeMemory(e->device, e->depthImageMemory, NULL);
 }
 
-void destroyFramebuffers(Engine *e) {
+void destroyFramebuffers(Sandbox *e) {
   for (uint32_t i = 0; i < e->imageCount; i++) {
     vkDestroyFramebuffer(e->device, e->framebuffers[i], NULL);
   }
   free(e->framebuffers);
 }
 
-void destroyUniformBuffers(Engine *e) {
+void destroyUniformBuffers(Sandbox *e) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroyBuffer(e->device, e->uniformBuffers[i], NULL);
     vkFreeMemory(e->device, e->uniformBuffersMemoryList[i], NULL);
   }
 }
 
-void destroySemaphores(Engine *e, VkSemaphore *semaphores) {
+void destroySemaphores(Sandbox *e, VkSemaphore *semaphores) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroySemaphore(e->device, semaphores[i], NULL);
   }
 }
 
-void destroyFences(Engine *e, VkFence *fences) {
+void destroyFences(Sandbox *e, VkFence *fences) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroyFence(e->device, fences[i], NULL);
   }
 }
 
-void freeEngine(Engine *engine) {
+void freeEngine(Sandbox *engine) {
   vkDestroySwapchainKHR(engine->device, engine->swapchain, NULL);
   destroySwapchainImages(engine);
   destroyColorResources(engine);
@@ -1590,7 +1590,7 @@ void freeEngine(Engine *engine) {
   free(engine);
 }
 
-void run(Engine *e) {
+void run(Sandbox *e) {
   while (!glfwWindowShouldClose(e->window)) {
     glfwPollEvents();
     drawFrame(e);
