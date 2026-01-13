@@ -1,8 +1,6 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
-#include <cglm/cglm.h>
-
 typedef struct Sandbox Sandbox;
 
 Sandbox *makeEngine();
