@@ -1,2 +1,2 @@
 gcc -g -fsanitize=address -Ibranch/model/include -Itest/include -Icollections/squeue/include branch/model/src/board.c branch/model/test/runner.c collections/squeue/src/squeue.c test/src/test.c -o branch-test
-gcc -g -Ivk-sandbox/include -Istb/image -Itinyobj vk-sandbox/src/sandbox.c sandbox/src/main.c -lvulkan -lglfw -lm -lcglm -o vulkan-sandbox
+gcc -g -Ivksandbox/include -Istb/image -Itinyobj vksandbox/src/sandbox.c sandbox/src/main.c -lvulkan -lglfw -lm -lcglm -o vulkan-sandbox

@@ -21,6 +21,19 @@
 
 #define MAX_FRAMES_IN_FLIGHT 2
 
+typedef struct UniformBufferObject {
+  mat4 model;
+  mat4 view;
+  mat4 proj;
+  vec2 resolution;
+} UniformBufferObject;
+
+typedef struct Vertex {
+  vec3 vertex;
+  vec3 color;
+  vec2 texture;
+} Vertex;
+
 struct Sandbox {
 
   GLFWwindow *window;
