@@ -1,5 +1,6 @@
 #include <cglm/cam.h>
 #include <cglm/types.h>
+#include <cglm/util.h>
 #include <string.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
@@ -19,7 +20,7 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
 
-#define MAX_FRAMES_IN_FLIGHT 2
+#define MAX_FRAMES_IN_FLIGHT 4
 
 typedef struct UniformBufferObject {
   mat4 model;
@@ -50,6 +51,8 @@ struct Sandbox {
 
   VkImageView textureImageView;
 
+  VkDeviceMemory textureMemory;
+
   VkImage depthImage;
 
   VkImageView depthImageView;
@@ -57,8 +60,6 @@ struct Sandbox {
   VkDeviceMemory depthImageMemory;
 
   VkSampler textureSampler;
-
-  VkDeviceMemory textureMem;
 
   VkImage *swapchainImages;
 
@@ -91,8 +92,6 @@ struct Sandbox {
   VkSemaphore *renderFinishedSemaphores;
 
   VkFence *inFlight;
-
-  VkBuffer indexBuffer;
 
   VkBuffer *uniformBuffers;
 
@@ -144,7 +143,7 @@ struct Sandbox {
 void createInstance(VkInstance *instance) {
   uint32_t extCount = 0;
   const char **extensions = glfwGetRequiredInstanceExtensions(&extCount);
-  uint32_t layersCount = 1;
+  uint32_t layersCount = 0;
   const char **layers = (const char *[]){"VK_LAYER_KHRONOS_validation"};
   printf("extension count: %d\n", extCount);
   for (int i = 0; i < extCount; i++) {
@@ -344,7 +343,7 @@ void createImage(Sandbox *e, uint32_t width, uint32_t height,
   vkBindImageMemory(e->device, *image, *imageMemory, 0);
 }
 
-VkImageView createImageView(Sandbox *e, VkImage image, VkFormat format,
+VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
                             VkImageAspectFlags aspectFlags,
                             uint32_t mipLevels) {
   VkImageViewCreateInfo info = {
@@ -362,7 +361,7 @@ VkImageView createImageView(Sandbox *e, VkImage image, VkFormat format,
           },
   };
   VkImageView imageView;
-  if (vkCreateImageView(e->device, &info, NULL, &imageView) != VK_SUCCESS) {
+  if (vkCreateImageView(device, &info, NULL, &imageView) != VK_SUCCESS) {
     printf("failed to create image view\n");
     exit(1);
   }
@@ -378,8 +377,8 @@ void createImageViews(Sandbox *e) {
   }
   for (uint32_t i = 0; i < e->imageCount; i++) {
     e->swapchainImageViews[i] =
-        createImageView(e, e->swapchainImages[i], e->swapchainImageFormat,
-                        VK_IMAGE_ASPECT_COLOR_BIT, 1);
+        createImageView(e->device, e->swapchainImages[i],
+                        e->swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
   }
 }
 
@@ -739,7 +738,7 @@ void createColorResources(Sandbox *e) {
                   VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->colorImage,
               &e->colorImageMemory);
-  e->colorImageView = createImageView(e, e->colorImage, colorFormat,
+  e->colorImageView = createImageView(e->device, e->colorImage, colorFormat,
                                       VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
 
@@ -751,7 +750,7 @@ void createDepthResources(Sandbox *e) {
               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->depthImage,
               &e->depthImageMemory);
-  e->depthImageView = createImageView(e, e->depthImage, depthFormat,
+  e->depthImageView = createImageView(e->device, e->depthImage, depthFormat,
                                       VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 }
 
@@ -997,6 +996,41 @@ void generateMipmaps(Sandbox *e, VkImage image, uint32_t texWidth,
   endSingleTimeCommands(e, commandBuffer);
 }
 
+void createTexture(Sandbox *e) {
+  printf("creating texture\n");
+  int texWidth, texHeight, texChannels;
+  stbi_uc *pixels = stbi_load("assets/viking_room.png", &texWidth, &texHeight,
+                              &texChannels, STBI_rgb_alpha);
+  e->mipLevels = ((uint32_t)floor(log2(fmax(texWidth, texHeight)))) + 1;
+  VkDeviceSize dSize = texWidth * texHeight * 4;
+  VkBuffer stage;
+  VkDeviceMemory stageMem;
+  createBuffer(e, dSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+               &stage, &stageMem);
+  void *data;
+  vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
+  memcpy(data, pixels, dSize);
+  vkUnmapMemory(e->device, stageMem);
+  free(pixels);
+
+  createImage(e, texWidth, texHeight, e->mipLevels, VK_SAMPLE_COUNT_1_BIT,
+              VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+              VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+              &e->textureImage, &e->textureMemory);
+  transitionImageLayout(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
+                        VK_IMAGE_LAYOUT_UNDEFINED,
+                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
+  copyBufferToImage(e, stage, e->textureImage, texWidth, texHeight);
+  generateMipmaps(e, e->textureImage, texWidth, texHeight, e->mipLevels);
+  vkDestroyBuffer(e->device, stage, NULL);
+  vkFreeMemory(e->device, stageMem, NULL);
+}
+
 void createTextureImage(Sandbox *e) {
   printf("creating texture image\n");
   int texWidth, texHeight, texChannels;
@@ -1022,7 +1056,7 @@ void createTextureImage(Sandbox *e) {
                   VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-              &e->textureImage, &e->textureMem);
+              &e->textureImage, &e->textureMemory);
   transitionImageLayout(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                         VK_IMAGE_LAYOUT_UNDEFINED,
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
@@ -1035,7 +1069,7 @@ void createTextureImage(Sandbox *e) {
 void createTextureImageView(Sandbox *e) {
   printf("creating texture image view\n");
   e->textureImageView =
-      createImageView(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
+      createImageView(e->device, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                       VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels);
 }
 
@@ -1425,12 +1459,13 @@ void recordCommandBuffer(Sandbox *e, VkCommandBuffer commandBuffer,
 void drawFrame(Sandbox *e) {
   vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
                   UINT64_MAX);
+  vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
+
   uint32_t imageIndex;
   vkAcquireNextImageKHR(e->device, e->swapchain, UINT64_MAX,
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
 
-  vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
   updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
   recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);
@@ -1497,6 +1532,7 @@ Sandbox *makeEngine() {
   Sandbox *e = malloc(sizeof(Sandbox));
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
+  e->start = 0;
   createGlfw(e);
   createInstance(&e->instance);
   createSurface(e);
@@ -1584,7 +1620,6 @@ void freeEngine(Sandbox *engine) {
   vkDestroyPipeline(engine->device, engine->pipeline, NULL);
   vkDestroyDescriptorSetLayout(engine->device, engine->descriptorLayout, NULL);
   vkDestroyCommandPool(engine->device, engine->commandPool, NULL);
-  vkDestroyBuffer(engine->device, engine->indexBuffer, NULL);
   vkDestroyBuffer(engine->device, engine->modelBuffer, NULL);
   vkFreeMemory(engine->device, engine->modelBufferMemory, NULL);
   vkDestroyBuffer(engine->device, engine->modelIndiciesBuffer, NULL);
@@ -1593,7 +1628,7 @@ void freeEngine(Sandbox *engine) {
   destroySemaphores(engine, engine->imageAvailableSemaphores);
   destroySemaphores(engine, engine->renderFinishedSemaphores);
   destroyFences(engine, engine->inFlight);
-  vkFreeMemory(engine->device, engine->textureMem, NULL);
+  vkFreeMemory(engine->device, engine->textureMemory, NULL);
   vkDestroyDescriptorPool(engine->device, engine->descriptorPool, NULL);
   vkDestroyImageView(engine->device, engine->textureImageView, NULL);
   vkDestroySampler(engine->device, engine->textureSampler, NULL);
