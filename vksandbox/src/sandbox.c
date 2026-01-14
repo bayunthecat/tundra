@@ -143,7 +143,7 @@ struct Sandbox {
 void createInstance(VkInstance *instance) {
   uint32_t extCount = 0;
   const char **extensions = glfwGetRequiredInstanceExtensions(&extCount);
-  uint32_t layersCount = 0;
+  uint32_t layersCount = 1;
   const char **layers = (const char *[]){"VK_LAYER_KHRONOS_validation"};
   printf("extension count: %d\n", extCount);
   for (int i = 0; i < extCount; i++) {
