@@ -21,9 +21,9 @@
 #include <vulkan/vulkan_core.h>
 
 #define MAX_FRAMES_IN_FLIGHT 4
+#define INSTANCES 3
 
 typedef struct UniformBufferObject {
-  mat4 model;
   mat4 view;
   mat4 proj;
   vec2 resolution;
@@ -92,6 +92,14 @@ struct View {
   VkSemaphore *renderFinishedSemaphores;
 
   VkFence *inFlight;
+
+  mat4 model[INSTANCES];
+
+  VkBuffer *ssbo;
+
+  VkDeviceMemory *ssboMemory;
+
+  void **ssboMapped;
 
   VkBuffer *uniformBuffers;
 
@@ -479,13 +487,20 @@ void createDescriptorSetLayout(View *e) {
       .pImmutableSamplers = NULL,
       .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
   };
+  VkDescriptorSetLayoutBinding ssboLayoutBinding = {
+      .binding = 2,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+  };
   VkDescriptorSetLayoutBinding bindings[] = {
       uboLayoutBinding,
       samplerLayoutBinding,
+      ssboLayoutBinding,
   };
   VkDescriptorSetLayoutCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-      .bindingCount = 2,
+      .bindingCount = 3,
       .pBindings = bindings,
   };
   if (vkCreateDescriptorSetLayout(e->device, &info, NULL,
@@ -1102,6 +1117,34 @@ void createTextureSampler(View *e) {
   }
 }
 
+void createShaderStorageBufferObjects(View *e) {
+  printf("creating shader storage buffer objects\n");
+  e->ssbo = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
+  if (e->ssbo == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  e->ssboMemory = malloc(sizeof(VkDeviceMemory) * MAX_FRAMES_IN_FLIGHT);
+  if (e->ssboMemory == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  e->ssboMapped = malloc(sizeof(void *) * MAX_FRAMES_IN_FLIGHT);
+  if (e->ssboMapped == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  VkDeviceSize bufferSize = sizeof(mat4) * INSTANCES;
+  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    createBuffer(e, bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 &e->ssbo[i], &e->ssboMemory[i]);
+    vkMapMemory(e->device, e->ssboMemory[i], 0, bufferSize, 0,
+                &e->ssboMapped[i]);
+  }
+}
+
 void createUniformBuffers(View *e) {
   printf("creating uniform buffers\n");
   VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -1141,13 +1184,18 @@ void createDescriptorPool(View *e) {
       .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
       .descriptorCount = MAX_FRAMES_IN_FLIGHT,
   };
+  VkDescriptorPoolSize ssbo = {
+      .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+      .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+  };
   VkDescriptorPoolSize poolSizes[] = {
       poolSize,
       samplerPoolSize,
+      ssbo,
   };
   VkDescriptorPoolCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-      .poolSizeCount = 2,
+      .poolSizeCount = 3,
       .pPoolSizes = poolSizes,
       .maxSets = MAX_FRAMES_IN_FLIGHT,
   };
@@ -1209,9 +1257,23 @@ void createDescriptorSets(View *e) {
         .descriptorCount = 1,
         .pImageInfo = &imageInfo,
     };
+    VkDescriptorBufferInfo ssboInfo = {
+        .buffer = e->ssbo[i],
+        .offset = 0,
+        .range = sizeof(mat4) * INSTANCES,
+    };
+    VkWriteDescriptorSet ssboWrite = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = e->descriptorSets[i],
+        .dstBinding = 2,
+        .dstArrayElement = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .pBufferInfo = &ssboInfo,
+    };
 
-    VkWriteDescriptorSet writes[] = {bufferWrite, samplerWrite};
-    vkUpdateDescriptorSets(e->device, 2, writes, 0, NULL);
+    VkWriteDescriptorSet writes[] = {bufferWrite, samplerWrite, ssboWrite};
+    vkUpdateDescriptorSets(e->device, 3, writes, 0, NULL);
   }
 }
 
@@ -1371,6 +1433,21 @@ void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
   *vertices = v;
 }
 
+void updateSSBO(View *e, uint32_t currentImage) {
+  if (e->start == 0) {
+    e->start = clock();
+  }
+  clock_t currentTime = clock();
+  float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
+  mat4 m[INSTANCES];
+  for (int i = 0; i < INSTANCES; i++) {
+    glm_mat4_identity(m[i]);
+    glm_translate(m[i], (vec3){0.0f + i * 4, 0.0, 0.0});
+    glm_rotate(m[i], time * glm_rad(45.0f), (vec3){0.0f, 1.0f, 0.0f});
+  }
+  memcpy(e->ssboMapped[currentImage], m, sizeof(mat4) * INSTANCES);
+}
+
 void updateUniformBuffer(View *e, uint32_t currentImage) {
   if (e->start == 0) {
     e->start = clock();
@@ -1378,7 +1455,6 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
   clock_t currentTime = clock();
   float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
   UniformBufferObject ubo = {
-      .model = GLM_MAT4_IDENTITY_INIT,
       .view = GLM_MAT4_IDENTITY_INIT,
       .proj = GLM_MAT4_IDENTITY_INIT,
       .resolution =
@@ -1387,8 +1463,7 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
               (float)e->swapchainExtent.height,
           },
   };
-  glm_rotate(ubo.model, time * glm_rad(45.0f), (vec3){0.0f, 1.0f, 0.0f});
-  vec3 eye = {0.0f, 20.0f, 0.0f};
+  vec3 eye = {0.0f, 10.0f, 0.0f};
   vec3 center = {0.0f, 0.0f, 0.0f};
   vec3 up = {0.0f, 0.0f, 1.0f};
   glm_lookat(eye, center, up, ubo.view);
@@ -1448,7 +1523,7 @@ void recordCommandBuffer(View *e, VkCommandBuffer commandBuffer,
   vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           e->pipelineLayout, 0, 1,
                           &e->descriptorSets[e->currentFrame], 0, NULL);
-  vkCmdDraw(commandBuffer, e->modelVerticesNum, 2, 0, 0);
+  vkCmdDraw(commandBuffer, e->modelVerticesNum, INSTANCES, 0, 0);
   vkCmdEndRenderPass(commandBuffer);
   VkResult endBufferResult = vkEndCommandBuffer(commandBuffer);
   if (endBufferResult != VK_SUCCESS) {
@@ -1467,6 +1542,7 @@ void drawFrame(View *e) {
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
 
+  updateSSBO(e, e->currentFrame);
   updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
   recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);
@@ -1553,6 +1629,7 @@ View *makeEngine() {
   createTextureImageView(e);
   createTextureSampler(e);
   createUniformBuffers(e);
+  createShaderStorageBufferObjects(e);
   createDescriptorPool(e);
   createDescriptorSets(e);
   createCommandBuffers(e);

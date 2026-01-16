@@ -1,3 +1,4 @@
+#include <cglm/affine-pre.h>
 #include <cglm/cam.h>
 #include <cglm/types.h>
 #include <cglm/util.h>
