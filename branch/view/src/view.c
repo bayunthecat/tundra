@@ -1,6 +1,7 @@
 #include <cglm/cam.h>
 #include <cglm/types.h>
 #include <cglm/util.h>
+#include <math.h>
 #include <string.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
@@ -21,7 +22,7 @@
 #include <vulkan/vulkan_core.h>
 
 #define MAX_FRAMES_IN_FLIGHT 4
-#define INSTANCES 3
+#define INSTANCES 100
 
 typedef struct UniformBufferObject {
   mat4 view;
@@ -1440,10 +1441,19 @@ void updateSSBO(View *e, uint32_t currentImage) {
   clock_t currentTime = clock();
   float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
   mat4 m[INSTANCES];
+
+  int rows = 10;
+  int cols = 10;
+
+  float deg = 0;
   for (int i = 0; i < INSTANCES; i++) {
+    int r = i / cols;
+    int c = i % cols;
     glm_mat4_identity(m[i]);
-    glm_translate(m[i], (vec3){0.0f + i * 4, 0.0, 0.0});
-    glm_rotate(m[i], time * glm_rad(45.0f), (vec3){0.0f, 1.0f, 0.0f});
+    glm_translate(m[i], (vec3){0.0f + (c * 4), 0.0f + (r * 4), 0.0f});
+    glm_rotate(m[i], glm_rad(90.0f), (vec3){1.0f, 0.0f, 0.0f});
+    glm_rotate(m[i], time * glm_rad(deg), (vec3){0.0f, 1.0f, 0.0f});
+    deg += 1.0;
   }
   memcpy(e->ssboMapped[currentImage], m, sizeof(mat4) * INSTANCES);
 }
@@ -1463,11 +1473,11 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
               (float)e->swapchainExtent.height,
           },
   };
-  vec3 eye = {0.0f, 10.0f, 0.0f};
-  vec3 center = {0.0f, 0.0f, 0.0f};
-  vec3 up = {0.0f, 0.0f, 1.0f};
+  vec3 eye = {20.0f, 20.0f, 20.0f};
+  vec3 center = {20.0f, 20.0f, 0.0f};
+  vec3 up = {0.0f, 1.0f, 0.0f};
   glm_lookat(eye, center, up, ubo.view);
-  glm_perspective(glm_rad(90.0f),
+  glm_perspective(glm_rad(100.0f),
                   e->swapchainExtent.width / (float)e->swapchainExtent.height,
                   0.1f, 100.0f, ubo.proj);
   ubo.proj[1][1] *= -1;
