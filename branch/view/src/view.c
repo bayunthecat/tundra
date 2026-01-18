@@ -1,8 +1,10 @@
 #include <cglm/cam.h>
+#include <cglm/mat4.h>
 #include <cglm/types.h>
 #include <cglm/util.h>
 #include <math.h>
 #include <string.h>
+#include <sys/types.h>
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
 #define TINYOBJ_LOADER_C_IMPLEMENTATION
@@ -93,8 +95,6 @@ struct View {
   VkSemaphore *renderFinishedSemaphores;
 
   VkFence *inFlight;
-
-  mat4 model[INSTANCES];
 
   VkBuffer *ssbo;
 
@@ -293,6 +293,20 @@ void createSwapchain(View *e) {
                           e->swapchainImages);
   e->swapchainImageFormat = imageFormat;
   e->swapchainExtent = extent;
+}
+
+uint32_t findMemoryTypeNew(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
+                           VkMemoryPropertyFlags props) {
+  VkPhysicalDeviceMemoryProperties memProps = {};
+  vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
+  for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+    if (typeFilter & (1 << i) &&
+        (memProps.memoryTypes[i].propertyFlags & props) == props) {
+      return i;
+    }
+  }
+  printf("unable to find suitable memory\n");
+  exit(1);
 }
 
 uint32_t findMemoryType(View *e, uint32_t typeFilter,
@@ -1387,7 +1401,31 @@ void loadFile(void *ctx, const char *filename, const int isMtl,
   printf("load file len: %ld\n", *len);
 }
 
-void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
+void createModelBuffer(View *e, VkBuffer *buffer, Vertex *vertices,
+                       int verticesCount) {
+  VkBuffer stgBuffer;
+  VkDeviceMemory stgMemory;
+  VkDeviceSize bufferSize = sizeof(Vertex) * verticesCount;
+  createBuffer(e, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+               &stgBuffer, &stgMemory);
+
+  void *data;
+  vkMapMemory(e->device, stgMemory, 0, bufferSize, 0, &data);
+  memcpy(data, vertices, bufferSize);
+  vkUnmapMemory(e->device, stgMemory);
+  createBuffer(
+      e, bufferSize,
+      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, &e->modelBufferMemory);
+  copyBuffer(e, stgBuffer, *buffer, bufferSize);
+  vkDestroyBuffer(e->device, stgBuffer, NULL);
+  vkFreeMemory(e->device, stgMemory, NULL);
+}
+
+void loadModel(View *e, const char *filename, VkBuffer *buffer,
+               int *numVertices) {
   printf("loading model: %s\n", filename);
   tinyobj_attrib_t attrib;
   tinyobj_shape_t *shapes;
@@ -1401,6 +1439,7 @@ void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
     printf("Failed to load model, error: %d\n", result);
     exit(1);
   }
+  printf("num v: %d, num vt: %d\n", attrib.num_vertices, attrib.num_texcoords);
   vec3 verts[attrib.num_vertices];
   for (uint32_t i = 0; i < attrib.num_vertices; i++) {
     verts[i][0] = attrib.vertices[i * 3 + 0];
@@ -1431,7 +1470,8 @@ void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
     }
     r++;
   }
-  *vertices = v;
+  createModelBuffer(e, buffer, v, *numVertices);
+  free(v);
 }
 
 void updateSSBO(View *e, uint32_t currentImage) {
@@ -1590,29 +1630,6 @@ void drawFrame(View *e) {
   e->currentFrame = (e->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void createModelBuffer(View *e) {
-  VkBuffer stagingBuffer;
-  VkDeviceMemory stagingMemory;
-  VkDeviceSize bufferSize = sizeof(Vertex) * e->modelVerticesNum;
-  createBuffer(e, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-               &stagingBuffer, &stagingMemory);
-
-  void *data;
-  vkMapMemory(e->device, stagingMemory, 0, bufferSize, 0, &data);
-  memcpy(data, e->modelVertices, bufferSize);
-  vkUnmapMemory(e->device, stagingMemory);
-  createBuffer(e, bufferSize,
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->modelBuffer,
-               &e->modelBufferMemory);
-  copyBuffer(e, stagingBuffer, e->modelBuffer, bufferSize);
-  vkDestroyBuffer(e->device, stagingBuffer, NULL);
-  vkFreeMemory(e->device, stagingMemory, NULL);
-}
-
 // TODO mess end
 
 View *makeEngine() {
@@ -1644,8 +1661,7 @@ View *makeEngine() {
   createDescriptorSets(e);
   createCommandBuffers(e);
   createSyncObjects(e);
-  loadModel("assets/branch_t.obj", &e->modelVertices, &e->modelVerticesNum);
-  createModelBuffer(e);
+  loadModel(e, "assets/branch_l.obj", &e->modelBuffer, &e->modelVerticesNum);
   return e;
 }
 
@@ -1677,11 +1693,18 @@ void destroyFramebuffers(View *e) {
   free(e->framebuffers);
 }
 
-void destroyUniformBuffers(View *e) {
-  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vkDestroyBuffer(e->device, e->uniformBuffers[i], NULL);
-    vkFreeMemory(e->device, e->uniformBuffersMemoryList[i], NULL);
+void destroyBuffers(View *e, VkBuffer *buffers, int numBuffers) {
+  for (int i = 0; i < numBuffers; i++) {
+    vkDestroyBuffer(e->device, buffers[i], NULL);
   }
+  free(buffers);
+}
+
+void destroyDeviceMemory(View *e, VkDeviceMemory *memories, int numBuffers) {
+  for (int i = 0; i < numBuffers; i++) {
+    vkFreeMemory(e->device, memories[i], NULL);
+  }
+  free(memories);
 }
 
 void destroySemaphores(View *e, VkSemaphore *semaphores) {
@@ -1711,7 +1734,11 @@ void freeView(View *view) {
   vkDestroyBuffer(view->device, view->modelBuffer, NULL);
   vkFreeMemory(view->device, view->modelBufferMemory, NULL);
   vkDestroyBuffer(view->device, view->modelIndiciesBuffer, NULL);
-  destroyUniformBuffers(view);
+  destroyBuffers(view, view->uniformBuffers, MAX_FRAMES_IN_FLIGHT);
+  destroyDeviceMemory(view, view->uniformBuffersMemoryList,
+                      MAX_FRAMES_IN_FLIGHT);
+  destroyBuffers(view, view->ssbo, MAX_FRAMES_IN_FLIGHT);
+  destroyDeviceMemory(view, view->ssboMemory, MAX_FRAMES_IN_FLIGHT);
   vkDestroyImage(view->device, view->textureImage, NULL);
   destroySemaphores(view, view->imageAvailableSemaphores);
   destroySemaphores(view, view->renderFinishedSemaphores);
