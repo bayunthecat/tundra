@@ -1607,7 +1607,7 @@ void drawFrame(View *e) {
       .commandBufferCount = 1,
       .pCommandBuffers = &e->commandBuffers[e->currentFrame],
       .signalSemaphoreCount = 1,
-      .pSignalSemaphores = &e->renderFinishedSemaphores[e->currentFrame],
+      .pSignalSemaphores = &e->renderFinishedSemaphores[imageIndex],
   };
   if (vkQueueSubmit(e->queue, 1, &submitInfo, e->inFlight[e->currentFrame]) !=
       VK_SUCCESS) {
@@ -1617,7 +1617,7 @@ void drawFrame(View *e) {
   VkPresentInfoKHR presentInfo = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &e->renderFinishedSemaphores[e->currentFrame],
+      .pWaitSemaphores = &e->renderFinishedSemaphores[imageIndex],
       .swapchainCount = 1,
       .pSwapchains = &e->swapchain,
       .pImageIndices = &imageIndex,
