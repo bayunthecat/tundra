@@ -1632,7 +1632,7 @@ void drawFrame(View *e) {
 
 // TODO mess end
 
-View *makeEngine() {
+View *makeView() {
   View *e = malloc(sizeof(View));
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;

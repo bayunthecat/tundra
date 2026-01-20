@@ -1,7 +1,7 @@
 #include "view.h"
 
 int main() {
-  View *v = makeEngine();
+  View *v = makeView();
   run(v);
   freeView(v);
   return 0;

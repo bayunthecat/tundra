@@ -3,7 +3,7 @@
 
 typedef struct View View;
 
-View *makeEngine();
+View *makeView();
 
 void run(View *engine);
 
