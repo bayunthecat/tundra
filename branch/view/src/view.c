@@ -25,6 +25,10 @@
 
 #define MAX_FRAMES_IN_FLIGHT 4
 #define INSTANCES 100
+#define T_SHAPES 25
+#define I_SHAPES 25
+#define L_SHAPES 25
+#define E_SHAPES 25
 
 typedef struct UniformBufferObject {
   mat4 view;
@@ -39,6 +43,34 @@ typedef struct Vertex {
 } Vertex;
 
 struct View {
+
+  // Shapes buffers and mem
+
+  VkBuffer lShape;
+
+  VkDeviceMemory lShapeMemory;
+
+  int lShapeVNum;
+
+  VkBuffer tShape;
+
+  VkDeviceMemory tShapeMemory;
+
+  int tShapeVNum;
+
+  VkBuffer eShape;
+
+  VkDeviceMemory eShapeMemory;
+
+  int eShapeVNum;
+
+  VkBuffer iShape;
+
+  VkDeviceMemory iShapeMemory;
+
+  int iShapeVNum;
+
+  // Shape buffers and mem end
 
   GLFWwindow *window;
 
@@ -1401,8 +1433,8 @@ void loadFile(void *ctx, const char *filename, const int isMtl,
   printf("load file len: %ld\n", *len);
 }
 
-void createModelBuffer(View *e, VkBuffer *buffer, Vertex *vertices,
-                       int verticesCount) {
+void createModelBuffer(View *e, VkBuffer *buffer, VkDeviceMemory *memory,
+                       Vertex *vertices, int verticesCount) {
   VkBuffer stgBuffer;
   VkDeviceMemory stgMemory;
   VkDeviceSize bufferSize = sizeof(Vertex) * verticesCount;
@@ -1415,17 +1447,17 @@ void createModelBuffer(View *e, VkBuffer *buffer, Vertex *vertices,
   vkMapMemory(e->device, stgMemory, 0, bufferSize, 0, &data);
   memcpy(data, vertices, bufferSize);
   vkUnmapMemory(e->device, stgMemory);
-  createBuffer(
-      e, bufferSize,
-      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, &e->modelBufferMemory);
+  createBuffer(e, bufferSize,
+               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, memory);
   copyBuffer(e, stgBuffer, *buffer, bufferSize);
   vkDestroyBuffer(e->device, stgBuffer, NULL);
   vkFreeMemory(e->device, stgMemory, NULL);
 }
 
 void loadModel(View *e, const char *filename, VkBuffer *buffer,
-               int *numVertices) {
+               VkDeviceMemory *memory, int *numVertices) {
   printf("loading model: %s\n", filename);
   tinyobj_attrib_t attrib;
   tinyobj_shape_t *shapes;
@@ -1470,7 +1502,7 @@ void loadModel(View *e, const char *filename, VkBuffer *buffer,
     }
     r++;
   }
-  createModelBuffer(e, buffer, v, *numVertices);
+  createModelBuffer(e, buffer, memory, v, *numVertices);
   free(v);
 }
 
@@ -1524,6 +1556,13 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
   memcpy(e->uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }
 
+void drawShape(View *e, VkCommandBuffer commandBuffer, VkBuffer *shapeBuffer,
+               int vNum, int instaces, int firstInstace) {
+  VkDeviceSize offsets[] = {0};
+  vkCmdBindVertexBuffers(commandBuffer, 0, 1, shapeBuffer, offsets);
+  vkCmdDraw(commandBuffer, vNum, instaces, 0, firstInstace);
+}
+
 void recordCommandBuffer(View *e, VkCommandBuffer commandBuffer,
                          uint32_t imageIndex) {
   VkCommandBufferBeginInfo begingInfo = {
@@ -1568,12 +1607,13 @@ void recordCommandBuffer(View *e, VkCommandBuffer commandBuffer,
       .extent = e->swapchainExtent,
   };
   vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-  VkDeviceSize offsets[] = {0};
-  vkCmdBindVertexBuffers(commandBuffer, 0, 1, &e->modelBuffer, offsets);
   vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           e->pipelineLayout, 0, 1,
                           &e->descriptorSets[e->currentFrame], 0, NULL);
-  vkCmdDraw(commandBuffer, e->modelVerticesNum, INSTANCES, 0, 0);
+  drawShape(e, commandBuffer, &e->tShape, e->tShapeVNum, T_SHAPES, 0);
+  drawShape(e, commandBuffer, &e->lShape, e->lShapeVNum, L_SHAPES, 25);
+  drawShape(e, commandBuffer, &e->iShape, e->iShapeVNum, I_SHAPES, 50);
+  drawShape(e, commandBuffer, &e->eShape, e->eShapeVNum, I_SHAPES, 75);
   vkCmdEndRenderPass(commandBuffer);
   VkResult endBufferResult = vkEndCommandBuffer(commandBuffer);
   if (endBufferResult != VK_SUCCESS) {
@@ -1661,7 +1701,14 @@ View *makeView() {
   createDescriptorSets(e);
   createCommandBuffers(e);
   createSyncObjects(e);
-  loadModel(e, "assets/branch_l.obj", &e->modelBuffer, &e->modelVerticesNum);
+  loadModel(e, "assets/branch_t.obj", &e->tShape, &e->tShapeMemory,
+            &e->tShapeVNum);
+  loadModel(e, "assets/branch_l.obj", &e->lShape, &e->lShapeMemory,
+            &e->lShapeVNum);
+  loadModel(e, "assets/branch_i.obj", &e->iShape, &e->iShapeMemory,
+            &e->iShapeVNum);
+  loadModel(e, "assets/branch_e.obj", &e->eShape, &e->eShapeMemory,
+            &e->eShapeVNum);
   return e;
 }
 
@@ -1719,6 +1766,17 @@ void destroyFences(View *e, VkFence *fences) {
   }
 }
 
+void destroyShapesBuffers(View *e) {
+  vkDestroyBuffer(e->device, e->tShape, NULL);
+  vkFreeMemory(e->device, e->tShapeMemory, NULL);
+  vkDestroyBuffer(e->device, e->iShape, NULL);
+  vkFreeMemory(e->device, e->iShapeMemory, NULL);
+  vkDestroyBuffer(e->device, e->lShape, NULL);
+  vkFreeMemory(e->device, e->lShapeMemory, NULL);
+  vkDestroyBuffer(e->device, e->eShape, NULL);
+  vkFreeMemory(e->device, e->eShapeMemory, NULL);
+}
+
 void freeView(View *view) {
   vkDestroySwapchainKHR(view->device, view->swapchain, NULL);
   destroySwapchainImages(view);
@@ -1732,6 +1790,7 @@ void freeView(View *view) {
   vkDestroyDescriptorSetLayout(view->device, view->descriptorLayout, NULL);
   vkDestroyCommandPool(view->device, view->commandPool, NULL);
   vkDestroyBuffer(view->device, view->modelBuffer, NULL);
+  destroyShapesBuffers(view);
   vkFreeMemory(view->device, view->modelBufferMemory, NULL);
   vkDestroyBuffer(view->device, view->modelIndiciesBuffer, NULL);
   destroyBuffers(view, view->uniformBuffers, MAX_FRAMES_IN_FLIGHT);
