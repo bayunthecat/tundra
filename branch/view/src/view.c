@@ -1517,12 +1517,15 @@ void updateSSBO(View *e, uint32_t currentImage) {
   int rows = 10;
   int cols = 10;
 
+  float xS = 20.0f;
+  float yS = 20.0f;
+
   float deg = 0;
   for (int i = 0; i < INSTANCES; i++) {
     int r = i / cols;
     int c = i % cols;
     glm_mat4_identity(m[i]);
-    glm_translate(m[i], (vec3){0.0f + (c * 4), 0.0f + (r * 4), 0.0f});
+    glm_translate(m[i], (vec3){0.0f + (c * 4) - xS, 0.0f + (r * 4) - yS, 0.0f});
     glm_rotate(m[i], glm_rad(90.0f), (vec3){1.0f, 0.0f, 0.0f});
     glm_rotate(m[i], time * glm_rad(deg), (vec3){0.0f, 1.0f, 0.0f});
     deg += 1.0;
@@ -1545,8 +1548,8 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
               (float)e->swapchainExtent.height,
           },
   };
-  vec3 eye = {20.0f, 20.0f, 20.0f};
-  vec3 center = {20.0f, 20.0f, 0.0f};
+  vec3 eye = {0.0f, 0.0f, 20.0f};
+  vec3 center = {0.0f, 0.0f, 0.0f};
   vec3 up = {0.0f, 1.0f, 0.0f};
   glm_lookat(eye, center, up, ubo.view);
   glm_perspective(glm_rad(100.0f),
