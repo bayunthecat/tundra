@@ -45,8 +45,6 @@ typedef struct Vertex {
 
 struct View {
 
-  int frameCount;
-
   // Shapes buffers and mem
 
   VkBuffer lShape;
@@ -1687,7 +1685,6 @@ View *makeView() {
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
   e->start = 0;
-  e->frameCount = 0;
   createGlfw(e);
   createInstance(&e->instance);
   createSurface(e);
