@@ -4,6 +4,7 @@
 #include <cglm/types.h>
 #include <cglm/util.h>
 #include <math.h>
+#include <model.h>
 #include <string.h>
 #include <sys/types.h>
 #define STB_IMAGE_IMPLEMENTATION
@@ -42,6 +43,12 @@ typedef struct Vertex {
   vec3 color;
   vec2 texture;
 } Vertex;
+
+typedef struct RenderObject {
+  VkBuffer *buffer;
+  int vNum;
+  mat4 *model;
+} RenderObject;
 
 struct View {
 
