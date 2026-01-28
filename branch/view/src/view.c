@@ -1,3 +1,4 @@
+#include <bits/time.h>
 #include <cglm/cam.h>
 #include <cglm/mat4.h>
 #include <cglm/types.h>
@@ -24,11 +25,11 @@
 #include <vulkan/vulkan_core.h>
 
 #define MAX_FRAMES_IN_FLIGHT 4
-#define INSTANCES 100
-#define T_SHAPES 25
-#define I_SHAPES 25
-#define L_SHAPES 25
-#define E_SHAPES 25
+#define INSTANCES 169
+#define T_SHAPES 42
+#define I_SHAPES 42
+#define L_SHAPES 42
+#define E_SHAPES 43
 
 typedef struct UniformBufferObject {
   mat4 view;
@@ -43,6 +44,8 @@ typedef struct Vertex {
 } Vertex;
 
 struct View {
+
+  int frameCount;
 
   // Shapes buffers and mem
 
@@ -706,7 +709,7 @@ void createGraphicsPipeline(View *e) {
       .rasterizerDiscardEnable = VK_FALSE,
       .polygonMode = VK_POLYGON_MODE_FILL,
       .lineWidth = 1.0f,
-      .cullMode = VK_CULL_MODE_NONE,
+      .cullMode = VK_CULL_MODE_BACK_BIT,
       .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
       .depthBiasEnable = VK_FALSE,
 
@@ -1514,18 +1517,18 @@ void updateSSBO(View *e, uint32_t currentImage) {
   float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
   mat4 m[INSTANCES];
 
-  int rows = 10;
-  int cols = 10;
+  int rows = 13;
+  int cols = 13;
 
-  float xS = 20.0f;
-  float yS = 20.0f;
+  float xS = -26.0f;
+  float yS = -26.0f;
 
   float deg = 0;
   for (int i = 0; i < INSTANCES; i++) {
     int r = i / cols;
     int c = i % cols;
     glm_mat4_identity(m[i]);
-    glm_translate(m[i], (vec3){0.0f + (c * 4) - xS, 0.0f + (r * 4) - yS, 0.0f});
+    glm_translate(m[i], (vec3){0.0f + (c * 4) + xS, 0.0f + (r * 4) + yS, 0.0f});
     glm_rotate(m[i], glm_rad(90.0f), (vec3){1.0f, 0.0f, 0.0f});
     glm_rotate(m[i], time * glm_rad(deg), (vec3){0.0f, 1.0f, 0.0f});
     deg += 1.0;
@@ -1548,7 +1551,7 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
               (float)e->swapchainExtent.height,
           },
   };
-  vec3 eye = {0.0f, 0.0f, 20.0f};
+  vec3 eye = {0.0f, 0.0f, 25.0f};
   vec3 center = {0.0f, 0.0f, 0.0f};
   vec3 up = {0.0f, 1.0f, 0.0f};
   glm_lookat(eye, center, up, ubo.view);
@@ -1613,10 +1616,14 @@ void recordCommandBuffer(View *e, VkCommandBuffer commandBuffer,
   vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                           e->pipelineLayout, 0, 1,
                           &e->descriptorSets[e->currentFrame], 0, NULL);
-  drawShape(e, commandBuffer, &e->tShape, e->tShapeVNum, T_SHAPES, 0);
-  drawShape(e, commandBuffer, &e->lShape, e->lShapeVNum, L_SHAPES, 25);
-  drawShape(e, commandBuffer, &e->iShape, e->iShapeVNum, I_SHAPES, 50);
-  drawShape(e, commandBuffer, &e->eShape, e->eShapeVNum, I_SHAPES, 75);
+  int first = 0;
+  drawShape(e, commandBuffer, &e->tShape, e->tShapeVNum, T_SHAPES, first);
+  first += T_SHAPES;
+  drawShape(e, commandBuffer, &e->lShape, e->lShapeVNum, L_SHAPES, first);
+  first += L_SHAPES;
+  drawShape(e, commandBuffer, &e->iShape, e->iShapeVNum, I_SHAPES, first);
+  first += I_SHAPES;
+  drawShape(e, commandBuffer, &e->eShape, e->eShapeVNum, E_SHAPES, first);
   vkCmdEndRenderPass(commandBuffer);
   VkResult endBufferResult = vkEndCommandBuffer(commandBuffer);
   if (endBufferResult != VK_SUCCESS) {
@@ -1680,6 +1687,7 @@ View *makeView() {
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
   e->start = 0;
+  e->frameCount = 0;
   createGlfw(e);
   createInstance(&e->instance);
   createSurface(e);
@@ -1816,9 +1824,25 @@ void freeView(View *view) {
 }
 
 void run(View *e) {
+  struct timespec lastTime;
+  clock_gettime(CLOCK_MONOTONIC, &lastTime);
+  int frameCount = 0;
+  glfwSwapInterval(1);
   while (!glfwWindowShouldClose(e->window)) {
-    glfwPollEvents();
     drawFrame(e);
+
+    frameCount++;
+    struct timespec currentTime;
+    clock_gettime(CLOCK_MONOTONIC, &currentTime);
+    double elapsedTime = (currentTime.tv_sec - lastTime.tv_sec) +
+                         (currentTime.tv_nsec - lastTime.tv_nsec) / 1e9;
+    if (elapsedTime >= 1.0) {
+      double fps = frameCount / elapsedTime;
+      printf("FPS: %.2f\n", fps);
+      frameCount = 0;
+      lastTime = currentTime;
+    }
+    glfwPollEvents();
   }
   vkDeviceWaitIdle(e->device);
 }
