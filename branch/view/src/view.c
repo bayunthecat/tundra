@@ -1,5 +1,6 @@
 #include <bits/time.h>
 #include <cglm/cam.h>
+#include <cglm/io.h>
 #include <cglm/mat4.h>
 #include <cglm/types.h>
 #include <cglm/util.h>
@@ -27,6 +28,8 @@
 
 #define MAX_FRAMES_IN_FLIGHT 4
 #define INSTANCES 169
+#define ROWS 13
+#define COLS 13
 #define T_SHAPES 42
 #define I_SHAPES 42
 #define L_SHAPES 42
@@ -51,6 +54,26 @@ typedef struct RenderObject {
 } RenderObject;
 
 struct View {
+
+  int tShapeNum;
+
+  int iShapeNum;
+
+  int lShapeNum;
+
+  int eShapeNum;
+
+  int numRenderObjects;
+
+  RenderObject *renderObjects;
+
+  mat4 *models;
+
+  VkBuffer *renderObjectsSsbo;
+
+  VkDeviceMemory *renderObjectsSsboMemory;
+
+  void **renderObjectsSsboMapped;
 
   // Shapes buffers and mem
 
@@ -299,7 +322,7 @@ void createSwapchain(View *e) {
       .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
       .imageFormat = imageFormat,
       .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-      .presentMode = VK_PRESENT_MODE_MAILBOX_KHR,
+      .presentMode = VK_PRESENT_MODE_FIFO_KHR,
       .imageExtent = extent,
       .surface = e->surface,
       .minImageCount = swapchainImageCount,
@@ -714,7 +737,7 @@ void createGraphicsPipeline(View *e) {
       .rasterizerDiscardEnable = VK_FALSE,
       .polygonMode = VK_POLYGON_MODE_FILL,
       .lineWidth = 1.0f,
-      .cullMode = VK_CULL_MODE_BACK_BIT,
+      .cullMode = VK_CULL_MODE_NONE,
       .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
       .depthBiasEnable = VK_FALSE,
 
@@ -1261,7 +1284,7 @@ void createDescriptorPool(View *e) {
   };
 }
 
-void createDescriptorSets(View *e) {
+void createDescriptorSets(View *e, VkBuffer *ssbo, int totalShapes) {
   printf("creating descriptor sets\n");
   VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1313,9 +1336,9 @@ void createDescriptorSets(View *e) {
         .pImageInfo = &imageInfo,
     };
     VkDescriptorBufferInfo ssboInfo = {
-        .buffer = e->ssbo[i],
+        .buffer = ssbo[i],
         .offset = 0,
-        .range = sizeof(mat4) * INSTANCES,
+        .range = sizeof(mat4) * totalShapes,
     };
     VkWriteDescriptorSet ssboWrite = {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1622,13 +1645,13 @@ void recordCommandBuffer(View *e, VkCommandBuffer commandBuffer,
                           e->pipelineLayout, 0, 1,
                           &e->descriptorSets[e->currentFrame], 0, NULL);
   int first = 0;
-  drawShape(e, commandBuffer, &e->tShape, e->tShapeVNum, T_SHAPES, first);
-  first += T_SHAPES;
-  drawShape(e, commandBuffer, &e->lShape, e->lShapeVNum, L_SHAPES, first);
-  first += L_SHAPES;
-  drawShape(e, commandBuffer, &e->iShape, e->iShapeVNum, I_SHAPES, first);
-  first += I_SHAPES;
-  drawShape(e, commandBuffer, &e->eShape, e->eShapeVNum, E_SHAPES, first);
+  drawShape(e, commandBuffer, &e->tShape, e->tShapeVNum, e->tShapeNum, first);
+  first += e->tShapeNum;
+  drawShape(e, commandBuffer, &e->iShape, e->iShapeVNum, e->iShapeNum, first);
+  first += e->iShapeNum;
+  drawShape(e, commandBuffer, &e->lShape, e->lShapeVNum, e->lShapeNum, first);
+  first += e->lShapeNum;
+  drawShape(e, commandBuffer, &e->eShape, e->eShapeVNum, e->eShapeNum, first);
   vkCmdEndRenderPass(commandBuffer);
   VkResult endBufferResult = vkEndCommandBuffer(commandBuffer);
   if (endBufferResult != VK_SUCCESS) {
@@ -1647,7 +1670,7 @@ void drawFrame(View *e) {
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
 
-  updateSSBO(e, e->currentFrame);
+  // updateSSBO(e, e->currentFrame);
   updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
   recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);
@@ -1713,7 +1736,7 @@ View *makeView() {
   createUniformBuffers(e);
   createShaderStorageBufferObjects(e);
   createDescriptorPool(e);
-  createDescriptorSets(e);
+  // createDescriptorSets(e, e->ssbo, INSTANCES);
   createCommandBuffers(e);
   createSyncObjects(e);
   loadModel(e, "assets/branch_t.obj", &e->tShape, &e->tShapeMemory,
@@ -1827,11 +1850,144 @@ void freeView(View *view) {
   free(view);
 }
 
+static void createRenderObjectsSSBO(View *e, int totalShapes) {
+  e->renderObjectsSsbo = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
+  e->renderObjectsSsboMemory =
+      malloc(sizeof(VkDeviceMemory) * MAX_FRAMES_IN_FLIGHT);
+  e->renderObjectsSsboMapped = malloc(sizeof(void *) * MAX_FRAMES_IN_FLIGHT);
+  if (e->renderObjectsSsboMapped == NULL || e->renderObjectsSsbo == NULL ||
+      e->renderObjectsSsboMemory == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  VkDeviceSize bufferSize = sizeof(mat4) * totalShapes;
+  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    createBuffer(e, bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 &e->renderObjectsSsbo[i], &e->renderObjectsSsboMemory[i]);
+    vkMapMemory(e->device, e->renderObjectsSsboMemory[i], 0, bufferSize, 0,
+                &e->renderObjectsSsboMapped[i]);
+  }
+  createDescriptorSets(e, e->renderObjectsSsbo, totalShapes);
+}
+
+static void shapeType(enum TileType t, int *tShapes, int *iShapes, int *lShapes,
+                      int *eShapes) {
+  if (t == I) {
+    *iShapes = *iShapes + 1;
+    return;
+  }
+  if (t == NONE) {
+    return;
+  }
+  if (t == E) {
+    *eShapes = *eShapes + 1;
+    return;
+  }
+  if (t == L) {
+    *lShapes = *lShapes + 1;
+    return;
+  }
+  if (t == T) {
+    *tShapes = *tShapes + 1;
+    return;
+  }
+}
+
+static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
+  int tShapes = 0;
+  int iShapes = 0;
+  int lShapes = 0;
+  int eShapes = 0;
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      enum TileType type = boardTileTypeAt(brd, i, j);
+      shapeType(type, &tShapes, &iShapes, &lShapes, &eShapes);
+    }
+  }
+  v->tShapeNum = tShapes;
+  v->iShapeNum = iShapes;
+  v->lShapeNum = lShapes;
+  v->eShapeNum = eShapes;
+  int totalShapes = (tShapes + iShapes + lShapes + eShapes);
+  v->models = malloc(sizeof(mat4) * totalShapes);
+  if (v->models == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  v->renderObjects = malloc(sizeof(RenderObject) * totalShapes);
+  if (v->renderObjects == NULL) {
+    printf("malloc failed\n");
+    exit(1);
+  }
+  int cumulativeOffset = 0;
+  int tShapeOffset = cumulativeOffset;
+  cumulativeOffset += tShapes;
+  int iShapeOffset = cumulativeOffset;
+  cumulativeOffset += iShapes;
+  int lShapeOffset = cumulativeOffset;
+  cumulativeOffset += lShapes;
+  int eShapeOffset = cumulativeOffset;
+  cumulativeOffset += eShapes;
+  int currentShape = 0;
+  float shapeSize = 4.0f;
+  float xS = ((int)(rows / 2) * shapeSize + 2.0) * -1;
+  float yS = ((int)(cols / 2) * shapeSize + 2.0) * 1;
+  printf("xS: %f, yS: %f\n", xS, yS);
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      int degree = boardTileDegreeAt(brd, i, j);
+      mat4 template = GLM_MAT4_IDENTITY_INIT;
+      glm_translate(template, (vec3){(j * 4) + xS, -1 * (i * 4) + yS, 0.0f});
+      glm_rotate(template, glm_rad(90), (vec3){1.0f, 0.0f, 0.0f});
+      glm_rotate(template, glm_rad(degree), (vec3){0.0f, 1.0f, 0.0f});
+      enum TileType t = boardTileTypeAt(brd, i, j);
+      int offset = 0;
+      if (t == NONE) {
+        continue;
+      }
+      if (t == T) {
+        offset = tShapeOffset++;
+        v->renderObjects[currentShape].buffer = &v->tShape;
+        v->renderObjects[currentShape].vNum = v->tShapeVNum;
+      }
+      if (t == I) {
+        offset = iShapeOffset++;
+      }
+      if (t == L) {
+        offset = lShapeOffset++;
+      }
+      if (t == E) {
+        offset = eShapeOffset++;
+      }
+      memcpy(v->models[offset], template, sizeof(mat4));
+      v->renderObjects[currentShape].model = &v->models[offset];
+      currentShape++;
+    }
+  }
+  printf("t shapes: %d\n", tShapes);
+  printf("cumOffset: %d, totalShapes: %d\n", cumulativeOffset, totalShapes);
+  createRenderObjectsSSBO(v, totalShapes);
+  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    memcpy(v->renderObjectsSsboMapped[i], v->models,
+           sizeof(mat4) * totalShapes);
+  }
+  glm_mat4_print(v->renderObjectsSsboMapped[0], stdout);
+  glm_mat4_print(v->renderObjectsSsboMapped[1], stdout);
+  glm_mat4_print(v->renderObjectsSsboMapped[2], stdout);
+}
+
 void run(View *e) {
   struct timespec lastTime;
   clock_gettime(CLOCK_MONOTONIC, &lastTime);
   int frameCount = 0;
   glfwSwapInterval(1);
+
+  Board *brd = boardMake(1758855645, ROWS, COLS);
+  boardPrint(brd);
+  mapToRenderObjects(e, brd, ROWS, COLS);
+
   while (!glfwWindowShouldClose(e->window)) {
     drawFrame(e);
 
@@ -1842,11 +1998,12 @@ void run(View *e) {
                          (currentTime.tv_nsec - lastTime.tv_nsec) / 1e9;
     if (elapsedTime >= 1.0) {
       double fps = frameCount / elapsedTime;
-      printf("FPS: %.2f\n", fps);
+      // printf("FPS: %.2f\n", fps);
       frameCount = 0;
       lastTime = currentTime;
     }
     glfwPollEvents();
   }
+  boardFree(brd);
   vkDeviceWaitIdle(e->device);
 }

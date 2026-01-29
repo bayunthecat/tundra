@@ -222,6 +222,92 @@ int boardValueAt(Board *brd, int row, int col) {
   return tileAt(brd, row, col)->v;
 }
 
+void boardPrint(Board *brd) {
+  for (int i = 0; i < brd->rows; i++) {
+    for (int j = 0; j < brd->cols; j++) {
+      printf("%d ", tileAt(brd, i, j)->v);
+    }
+    printf("\n");
+  }
+}
+
+enum TileType boardTileTypeAt(Board *brd, int row, int col) {
+  int value = tileAt(brd, row, col)->v;
+  int v = value;
+  if (v == 5 || v == 10) {
+    return I;
+  }
+  int bits = 0;
+  while (v != 0) {
+    bits += v & 1;
+    v = v >> 1;
+  }
+  if (bits == 0) {
+    return NONE;
+  }
+  if (bits == 1) {
+    return E;
+  }
+  if (bits == 2) {
+    return L;
+  }
+  if (bits == 3) {
+    return T;
+  }
+  return NONE;
+}
+
+int boardTileDegreeAt(Board *brd, int row, int col) {
+  Tile *t = tileAt(brd, row, col);
+  // I tiles
+  if (t->v == 5) {
+    return 0;
+  }
+  if (t->v == 10) {
+    return 90;
+  }
+  // L tiles
+  if (t->v == 6) {
+    return 0;
+  }
+  if (t->v == 12) {
+    return 90;
+  }
+  if (t->v == 9) {
+    return 180;
+  }
+  if (t->v == 3) {
+    return 270;
+  }
+  // T tiles
+  if (t->v == 14) {
+    return 0;
+  }
+  if (t->v == 13) {
+    return 90;
+  }
+  if (t->v == 11) {
+    return 180;
+  }
+  if (t->v == 7) {
+    return 270;
+  }
+  // E tiles
+  if (t->v == 4) {
+    return 0;
+  }
+  if (t->v == 8) {
+    return 90;
+  }
+  if (t->v == 1) {
+    return 180;
+  }
+  if (t->v == 2) {
+    return 270;
+  }
+  return 0;
+}
+
 int boardConnectedAt(Board *brd, int row, int col) {
   return tileAt(brd, row, col)->connected;
 }
