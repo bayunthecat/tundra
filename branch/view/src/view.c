@@ -1537,6 +1537,18 @@ void loadModel(View *e, const char *filename, VkBuffer *buffer,
   free(v);
 }
 
+void updateModels(View *e, int currentImage) {
+  if (e->start == 0) {
+    e->start = clock();
+  }
+  clock_t currentTime = clock();
+  float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
+  for (int i = 0; i < e->numRenderObjects; i++) {
+    glm_rotate(((mat4 *)e->renderObjectsSsboMapped[currentImage])[i],
+               glm_rad(1), (vec3){0.0f, 1.0f, 0.0f});
+  }
+}
+
 void updateSSBO(View *e, uint32_t currentImage) {
   if (e->start == 0) {
     e->start = clock();
@@ -1670,6 +1682,7 @@ void drawFrame(View *e) {
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
 
+  updateModels(e, e->currentFrame);
   // updateSSBO(e, e->currentFrame);
   updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
@@ -1911,6 +1924,7 @@ static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
   v->lShapeNum = lShapes;
   v->eShapeNum = eShapes;
   int totalShapes = (tShapes + iShapes + lShapes + eShapes);
+  v->numRenderObjects = totalShapes;
   v->models = malloc(sizeof(mat4) * totalShapes);
   if (v->models == NULL) {
     printf("malloc failed\n");
