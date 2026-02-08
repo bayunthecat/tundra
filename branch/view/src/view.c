@@ -1683,7 +1683,6 @@ void drawFrame(View *e) {
                         VK_NULL_HANDLE, &imageIndex);
 
   updateModels(e, e->currentFrame);
-  // updateSSBO(e, e->currentFrame);
   updateUniformBuffer(e, e->currentFrame);
   vkResetCommandBuffer(e->commandBuffers[e->currentFrame], 0);
   recordCommandBuffer(e, e->commandBuffers[e->currentFrame], imageIndex);
@@ -1848,7 +1847,10 @@ void freeView(View *view) {
   destroyDeviceMemory(view, view->uniformBuffersMemoryList,
                       MAX_FRAMES_IN_FLIGHT);
   destroyBuffers(view, view->ssbo, MAX_FRAMES_IN_FLIGHT);
+  destroyBuffers(view, view->renderObjectsSsbo, MAX_FRAMES_IN_FLIGHT);
   destroyDeviceMemory(view, view->ssboMemory, MAX_FRAMES_IN_FLIGHT);
+  destroyDeviceMemory(view, view->renderObjectsSsboMemory,
+                      MAX_FRAMES_IN_FLIGHT);
   vkDestroyImage(view->device, view->textureImage, NULL);
   destroySemaphores(view, view->imageAvailableSemaphores);
   destroySemaphores(view, view->renderFinishedSemaphores);
@@ -1987,9 +1989,6 @@ static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
     memcpy(v->renderObjectsSsboMapped[i], v->models,
            sizeof(mat4) * totalShapes);
   }
-  glm_mat4_print(v->renderObjectsSsboMapped[0], stdout);
-  glm_mat4_print(v->renderObjectsSsboMapped[1], stdout);
-  glm_mat4_print(v->renderObjectsSsboMapped[2], stdout);
 }
 
 void run(View *e) {
@@ -2012,7 +2011,7 @@ void run(View *e) {
                          (currentTime.tv_nsec - lastTime.tv_nsec) / 1e9;
     if (elapsedTime >= 1.0) {
       double fps = frameCount / elapsedTime;
-      // printf("FPS: %.2f\n", fps);
+      printf("FPS: %.2f\n", fps);
       frameCount = 0;
       lastTime = currentTime;
     }
