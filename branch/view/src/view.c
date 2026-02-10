@@ -4,6 +4,7 @@
 #include <cglm/mat4.h>
 #include <cglm/types.h>
 #include <cglm/util.h>
+#include <cglm/vec3.h>
 #include <math.h>
 #include <model.h>
 #include <string.h>
@@ -27,13 +28,10 @@
 #include <vulkan/vulkan_core.h>
 
 #define MAX_FRAMES_IN_FLIGHT 4
-#define INSTANCES 169
 #define ROWS 13
 #define COLS 13
-#define T_SHAPES 42
-#define I_SHAPES 42
-#define L_SHAPES 42
-#define E_SHAPES 43
+#define SCREEN_W 800
+#define SCREEN_H 600
 
 typedef struct UniformBufferObject {
   mat4 view;
@@ -48,12 +46,20 @@ typedef struct Vertex {
 } Vertex;
 
 typedef struct RenderObject {
-  VkBuffer *buffer;
-  int vNum;
   mat4 *model;
+  enum TileType type;
+  double degree;
 } RenderObject;
 
+typedef struct WindowData {
+  int x;
+  int y;
+  int processed;
+} WindowData;
+
 struct View {
+
+  WindowData windowData;
 
   int tShapeNum;
 
@@ -159,12 +165,6 @@ struct View {
 
   VkFence *inFlight;
 
-  VkBuffer *ssbo;
-
-  VkDeviceMemory *ssboMemory;
-
-  void **ssboMapped;
-
   VkBuffer *uniformBuffers;
 
   VkDeviceMemory *uniformBuffersMemoryList;
@@ -210,8 +210,6 @@ struct View {
   clock_t start;
 };
 
-// TODO mess
-
 void createInstance(VkInstance *instance) {
   uint32_t extCount = 0;
   const char **extensions = glfwGetRequiredInstanceExtensions(&extCount);
@@ -247,7 +245,7 @@ void createGlfw(View *e) {
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
   glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-  e->window = glfwCreateWindow(800, 600, "Hello Vulkan", NULL, NULL);
+  e->window = glfwCreateWindow(SCREEN_W, SCREEN_H, "Hello Vulkan", NULL, NULL);
 }
 
 void createSurface(View *e) {
@@ -313,8 +311,8 @@ void createSwapchain(View *e) {
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(e->physicalDevice, e->surface,
                                             &surfaceCaps);
   VkExtent2D extent = {
-      .width = 800,
-      .height = 600,
+      .width = SCREEN_W,
+      .height = SCREEN_H,
   };
   uint32_t swapchainImageCount = surfaceCaps.minImageCount + 1;
   VkFormat imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
@@ -1195,34 +1193,6 @@ void createTextureSampler(View *e) {
   }
 }
 
-void createShaderStorageBufferObjects(View *e) {
-  printf("creating shader storage buffer objects\n");
-  e->ssbo = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
-  if (e->ssbo == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  e->ssboMemory = malloc(sizeof(VkDeviceMemory) * MAX_FRAMES_IN_FLIGHT);
-  if (e->ssboMemory == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  e->ssboMapped = malloc(sizeof(void *) * MAX_FRAMES_IN_FLIGHT);
-  if (e->ssboMapped == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  VkDeviceSize bufferSize = sizeof(mat4) * INSTANCES;
-  for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    createBuffer(e, bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 &e->ssbo[i], &e->ssboMemory[i]);
-    vkMapMemory(e->device, e->ssboMemory[i], 0, bufferSize, 0,
-                &e->ssboMapped[i]);
-  }
-}
-
 void createUniformBuffers(View *e) {
   printf("creating uniform buffers\n");
   VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -1543,45 +1513,19 @@ void updateModels(View *e, int currentImage) {
   }
   clock_t currentTime = clock();
   float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
-  for (int i = 0; i < e->numRenderObjects; i++) {
-    glm_rotate(((mat4 *)e->renderObjectsSsboMapped[currentImage])[i],
-               glm_rad(1), (vec3){0.0f, 1.0f, 0.0f});
+  if (e->windowData.processed == 0) {
+    int i = rand() % 169;
+    if (e->renderObjects[i].type != NONE) {
+      for (int j = 0; j < MAX_FRAMES_IN_FLIGHT; j++) {
+        glm_rotate(((mat4 *)e->renderObjectsSsboMapped[j])[i], glm_rad(90),
+                   (vec3){0.0f, 1.0f, 0.0f});
+      }
+    }
+    e->windowData.processed = 1;
   }
-}
-
-void updateSSBO(View *e, uint32_t currentImage) {
-  if (e->start == 0) {
-    e->start = clock();
-  }
-  clock_t currentTime = clock();
-  float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
-  mat4 m[INSTANCES];
-
-  int rows = 13;
-  int cols = 13;
-
-  float xS = -26.0f;
-  float yS = -26.0f;
-
-  float deg = 0;
-  for (int i = 0; i < INSTANCES; i++) {
-    int r = i / cols;
-    int c = i % cols;
-    glm_mat4_identity(m[i]);
-    glm_translate(m[i], (vec3){0.0f + (c * 4) + xS, 0.0f + (r * 4) + yS, 0.0f});
-    glm_rotate(m[i], glm_rad(90.0f), (vec3){1.0f, 0.0f, 0.0f});
-    glm_rotate(m[i], time * glm_rad(deg), (vec3){0.0f, 1.0f, 0.0f});
-    deg += 1.0;
-  }
-  memcpy(e->ssboMapped[currentImage], m, sizeof(mat4) * INSTANCES);
 }
 
 void updateUniformBuffer(View *e, uint32_t currentImage) {
-  if (e->start == 0) {
-    e->start = clock();
-  }
-  clock_t currentTime = clock();
-  float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
   UniformBufferObject ubo = {
       .view = GLM_MAT4_IDENTITY_INIT,
       .proj = GLM_MAT4_IDENTITY_INIT,
@@ -1591,11 +1535,11 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
               (float)e->swapchainExtent.height,
           },
   };
-  vec3 eye = {0.0f, 0.0f, 25.0f};
+  vec3 eye = {0.0f, 0.0f, 50.0f};
   vec3 center = {0.0f, 0.0f, 0.0f};
   vec3 up = {0.0f, 1.0f, 0.0f};
   glm_lookat(eye, center, up, ubo.view);
-  glm_perspective(glm_rad(100.0f),
+  glm_perspective(glm_rad(60.0f),
                   e->swapchainExtent.width / (float)e->swapchainExtent.height,
                   0.1f, 100.0f, ubo.proj);
   ubo.proj[1][1] *= -1;
@@ -1727,6 +1671,7 @@ View *makeView() {
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
   e->start = 0;
+  e->windowData.processed = 1;
   createGlfw(e);
   createInstance(&e->instance);
   createSurface(e);
@@ -1746,9 +1691,7 @@ View *makeView() {
   createTextureImageView(e);
   createTextureSampler(e);
   createUniformBuffers(e);
-  createShaderStorageBufferObjects(e);
   createDescriptorPool(e);
-  // createDescriptorSets(e, e->ssbo, INSTANCES);
   createCommandBuffers(e);
   createSyncObjects(e);
   loadModel(e, "assets/branch_t.obj", &e->tShape, &e->tShapeMemory,
@@ -1846,9 +1789,7 @@ void freeView(View *view) {
   destroyBuffers(view, view->uniformBuffers, MAX_FRAMES_IN_FLIGHT);
   destroyDeviceMemory(view, view->uniformBuffersMemoryList,
                       MAX_FRAMES_IN_FLIGHT);
-  destroyBuffers(view, view->ssbo, MAX_FRAMES_IN_FLIGHT);
   destroyBuffers(view, view->renderObjectsSsbo, MAX_FRAMES_IN_FLIGHT);
-  destroyDeviceMemory(view, view->ssboMemory, MAX_FRAMES_IN_FLIGHT);
   destroyDeviceMemory(view, view->renderObjectsSsboMemory,
                       MAX_FRAMES_IN_FLIGHT);
   vkDestroyImage(view->device, view->textureImage, NULL);
@@ -1932,7 +1873,7 @@ static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
     printf("malloc failed\n");
     exit(1);
   }
-  v->renderObjects = malloc(sizeof(RenderObject) * totalShapes);
+  v->renderObjects = malloc(sizeof(RenderObject) * (ROWS * COLS));
   if (v->renderObjects == NULL) {
     printf("malloc failed\n");
     exit(1);
@@ -1950,7 +1891,7 @@ static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
   float shapeSize = 4.0f;
   float xS = ((int)(rows / 2) * shapeSize + 2.0) * -1;
   float yS = ((int)(cols / 2) * shapeSize + 2.0) * 1;
-  printf("xS: %f, yS: %f\n", xS, yS);
+  int counter = 0;
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
       int degree = boardTileDegreeAt(brd, i, j);
@@ -1960,13 +1901,14 @@ static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
       glm_rotate(template, glm_rad(degree), (vec3){0.0f, 1.0f, 0.0f});
       enum TileType t = boardTileTypeAt(brd, i, j);
       int offset = 0;
+      v->renderObjects[counter].type = t;
+      v->renderObjects[counter].degree = degree;
       if (t == NONE) {
+        counter++;
         continue;
       }
       if (t == T) {
         offset = tShapeOffset++;
-        v->renderObjects[currentShape].buffer = &v->tShape;
-        v->renderObjects[currentShape].vNum = v->tShapeVNum;
       }
       if (t == I) {
         offset = iShapeOffset++;
@@ -1978,8 +1920,9 @@ static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
         offset = eShapeOffset++;
       }
       memcpy(v->models[offset], template, sizeof(mat4));
-      v->renderObjects[currentShape].model = &v->models[offset];
+      v->renderObjects[counter].model = &v->models[offset];
       currentShape++;
+      counter++;
     }
   }
   printf("t shapes: %d\n", tShapes);
@@ -1991,6 +1934,34 @@ static void mapToRenderObjects(View *v, Board *brd, int rows, int cols) {
   }
 }
 
+int instersectAt(vec3 plane, vec3 normal, vec3 origin, vec3 dir, vec3 at) {
+  float denom = glm_vec3_dot(normal, dir);
+  if (fabs(denom) < 0.000001) {
+    return 1;
+  }
+  vec3 diff;
+  glm_vec3_sub(plane, origin, diff);
+  float t = glm_vec3_dot(diff, normal) / denom;
+  glm_vec3_scale(dir, t, at);
+  glm_vec3_add(origin, at, at);
+  return 0;
+}
+
+static void mouseCallback(GLFWwindow *window, int button, int action,
+                          int mods) {
+  if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+    double cx;
+    double cy;
+    glfwGetCursorPos(window, &cx, &cy);
+    double xNdc = (2.0f * (cx + 0.5f) / SCREEN_W) - 1.0f;
+    double yNdc = 1.0f - (2.0f * (cy + 0.5)) / SCREEN_H;
+    WindowData *data = glfwGetWindowUserPointer(window);
+    data->x = xNdc;
+    data->y = yNdc;
+    data->processed = 0;
+  }
+}
+
 void run(View *e) {
   struct timespec lastTime;
   clock_gettime(CLOCK_MONOTONIC, &lastTime);
@@ -1998,8 +1969,10 @@ void run(View *e) {
   glfwSwapInterval(1);
 
   Board *brd = boardMake(1758855645, ROWS, COLS);
-  boardPrint(brd);
   mapToRenderObjects(e, brd, ROWS, COLS);
+
+  glfwSetWindowUserPointer(e->window, &e->windowData);
+  glfwSetMouseButtonCallback(e->window, mouseCallback);
 
   while (!glfwWindowShouldClose(e->window)) {
     drawFrame(e);
@@ -2011,11 +1984,12 @@ void run(View *e) {
                          (currentTime.tv_nsec - lastTime.tv_nsec) / 1e9;
     if (elapsedTime >= 1.0) {
       double fps = frameCount / elapsedTime;
-      printf("FPS: %.2f\n", fps);
+      // printf("FPS: %.2f\n", fps);
       frameCount = 0;
       lastTime = currentTime;
     }
     glfwPollEvents();
+    glfwSwapBuffers(e->window);
   }
   boardFree(brd);
   vkDeviceWaitIdle(e->device);
