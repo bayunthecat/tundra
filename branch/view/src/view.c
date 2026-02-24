@@ -32,6 +32,7 @@
 #define COLS 13
 #define SCREEN_W 800
 #define SCREEN_H 600
+#define FOV 60.0f
 
 typedef struct UniformBufferObject {
   mat4 view;
@@ -51,15 +52,7 @@ typedef struct RenderObject {
   double degree;
 } RenderObject;
 
-typedef struct WindowData {
-  int x;
-  int y;
-  int processed;
-} WindowData;
-
 struct View {
-
-  WindowData windowData;
 
   int tShapeNum;
 
@@ -1513,16 +1506,6 @@ void updateModels(View *e, int currentImage) {
   }
   clock_t currentTime = clock();
   float time = (float)(currentTime - e->start) / CLOCKS_PER_SEC;
-  if (e->windowData.processed == 0) {
-    int i = rand() % 169;
-    if (e->renderObjects[i].type != NONE) {
-      for (int j = 0; j < MAX_FRAMES_IN_FLIGHT; j++) {
-        glm_rotate(((mat4 *)e->renderObjectsSsboMapped[j])[i], glm_rad(90),
-                   (vec3){0.0f, 1.0f, 0.0f});
-      }
-    }
-    e->windowData.processed = 1;
-  }
 }
 
 void updateUniformBuffer(View *e, uint32_t currentImage) {
@@ -1539,7 +1522,7 @@ void updateUniformBuffer(View *e, uint32_t currentImage) {
   vec3 center = {0.0f, 0.0f, 0.0f};
   vec3 up = {0.0f, 1.0f, 0.0f};
   glm_lookat(eye, center, up, ubo.view);
-  glm_perspective(glm_rad(60.0f),
+  glm_perspective(glm_rad(FOV),
                   e->swapchainExtent.width / (float)e->swapchainExtent.height,
                   0.1f, 100.0f, ubo.proj);
   ubo.proj[1][1] *= -1;
@@ -1671,7 +1654,6 @@ View *makeView() {
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
   e->start = 0;
-  e->windowData.processed = 1;
   createGlfw(e);
   createInstance(&e->instance);
   createSurface(e);
@@ -1953,12 +1935,7 @@ static void mouseCallback(GLFWwindow *window, int button, int action,
     double cx;
     double cy;
     glfwGetCursorPos(window, &cx, &cy);
-    double xNdc = (2.0f * (cx + 0.5f) / SCREEN_W) - 1.0f;
-    double yNdc = 1.0f - (2.0f * (cy + 0.5)) / SCREEN_H;
-    WindowData *data = glfwGetWindowUserPointer(window);
-    data->x = xNdc;
-    data->y = yNdc;
-    data->processed = 0;
+    printf("Pressed LMB at: %f, %f\n", cx, cy);
   }
 }
 
@@ -1971,7 +1948,6 @@ void run(View *e) {
   Board *brd = boardMake(1758855645, ROWS, COLS);
   mapToRenderObjects(e, brd, ROWS, COLS);
 
-  glfwSetWindowUserPointer(e->window, &e->windowData);
   glfwSetMouseButtonCallback(e->window, mouseCallback);
 
   while (!glfwWindowShouldClose(e->window)) {
