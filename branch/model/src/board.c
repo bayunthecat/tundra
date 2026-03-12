@@ -19,8 +19,8 @@ typedef struct Coord {
 
 struct Board {
   Tile* tiles;
-  int   cols;
-  int   rows;
+  int cols;
+  int rows;
   Coord source;
 };
 
@@ -78,11 +78,11 @@ Coord* makeCoord(int i, int j) {
 
 void generateBoard(Board* brd, int seed) {
   srand(seed);
-  int**   visited = make2DIntArray(brd->rows, brd->cols);
-  int**   reserved = make2DIntArray(brd->rows, brd->cols);
-  int     qCap = brd->rows * brd->cols;
-  void*   storage[qCap];
-  SQueue  sq;
+  int** visited = make2DIntArray(brd->rows, brd->cols);
+  int** reserved = make2DIntArray(brd->rows, brd->cols);
+  int qCap = brd->rows * brd->cols;
+  void* storage[qCap];
+  SQueue sq;
   SQueue* q = &sq;
   sQueueInit(q, storage, qCap);
   Coord* start = makeCoord(brd->source.i, brd->source.j);

@@ -7,18 +7,18 @@ typedef struct TestSuite TestSuite;
 
 typedef struct TestRun TestRun;
 
-typedef void (*test)(TestRun *);
+typedef void (*test)(TestRun*);
 
-TestSuite *testSuiteMake(char *name);
+TestSuite* testSuiteMake(char* name);
 
-void testSuiteFree(TestSuite *s);
+void testSuiteFree(TestSuite* s);
 
-void testRegisterFn(TestSuite *s, char *name, test);
+void testRegisterFn(TestSuite* s, char* name, test);
 
-void testFail(TestRun *r, char *reason);
+void testFail(TestRun* r, char* reason);
 
-void testVerify(TestRun *r, void *want, size_t wantS, void *got, size_t gotS);
+void testVerify(TestRun* r, void* want, size_t wantS, void* got, size_t gotS);
 
-void testRun(TestSuite *s);
+void testRun(TestSuite* s);
 
-#endif // !TEST_H
+#endif  // !TEST_H

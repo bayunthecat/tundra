@@ -6,9 +6,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
 #define TINYOBJ_LOADER_C_IMPLEMENTATION
-#include "sandbox.h"
-#include "stb_image.h"
-#include "tinyobj_loader_c.h"
 #include <GLFW/glfw3.h>
 #include <cglm/affine-mat.h>
 #include <cglm/affine.h>
@@ -20,6 +17,10 @@
 #include <time.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
+
+#include "sandbox.h"
+#include "stb_image.h"
+#include "tinyobj_loader_c.h"
 
 #define MAX_FRAMES_IN_FLIGHT 4
 
@@ -37,8 +38,7 @@ typedef struct Vertex {
 } Vertex;
 
 struct Sandbox {
-
-  GLFWwindow *window;
+  GLFWwindow* window;
 
   VkInstance instance;
 
@@ -62,9 +62,9 @@ struct Sandbox {
 
   VkSampler textureSampler;
 
-  VkImage *swapchainImages;
+  VkImage* swapchainImages;
 
-  VkImageView *swapchainImageViews;
+  VkImageView* swapchainImageViews;
 
   VkPipelineLayout pipelineLayout;
 
@@ -82,29 +82,29 @@ struct Sandbox {
 
   VkPipeline pipeline;
 
-  VkFramebuffer *framebuffers;
+  VkFramebuffer* framebuffers;
 
   VkCommandPool commandPool;
 
-  VkCommandBuffer *commandBuffers;
+  VkCommandBuffer* commandBuffers;
 
-  VkSemaphore *imageAvailableSemaphores;
+  VkSemaphore* imageAvailableSemaphores;
 
-  VkSemaphore *renderFinishedSemaphores;
+  VkSemaphore* renderFinishedSemaphores;
 
-  VkFence *inFlight;
+  VkFence* inFlight;
 
-  VkBuffer *uniformBuffers;
+  VkBuffer* uniformBuffers;
 
-  VkDeviceMemory *uniformBuffersMemoryList;
+  VkDeviceMemory* uniformBuffersMemoryList;
 
-  void **uniformBuffersMapped;
+  void** uniformBuffersMapped;
 
   VkDescriptorSetLayout descriptorLayout;
 
   VkDescriptorPool descriptorPool;
 
-  VkDescriptorSet *descriptorSets;
+  VkDescriptorSet* descriptorSets;
 
   uint32_t currentFrame;
 
@@ -112,15 +112,15 @@ struct Sandbox {
 
   VkDeviceMemory modelBufferMemory;
 
-  Vertex *modelVertices;
+  Vertex* modelVertices;
 
   int modelVerticesNum;
 
-  vec2 *texCoords;
+  vec2* texCoords;
 
   uint32_t numTexCoords;
 
-  uint32_t *modelIndices;
+  uint32_t* modelIndices;
 
   uint32_t modelIndicesNum;
 
@@ -141,11 +141,11 @@ struct Sandbox {
 
 // TODO mess
 
-void createInstance(VkInstance *instance) {
+void createInstance(VkInstance* instance) {
   uint32_t extCount = 0;
-  const char **extensions = glfwGetRequiredInstanceExtensions(&extCount);
+  const char** extensions = glfwGetRequiredInstanceExtensions(&extCount);
   uint32_t layersCount = 1;
-  const char **layers = (const char *[]){"VK_LAYER_KHRONOS_validation"};
+  const char** layers = (const char*[]){"VK_LAYER_KHRONOS_validation"};
   printf("extension count: %d\n", extCount);
   for (int i = 0; i < extCount; i++) {
     printf("ext: %d, %s\n", i, extensions[i]);
@@ -171,7 +171,7 @@ void createInstance(VkInstance *instance) {
   }
 }
 
-void createGlfw(Sandbox *e) {
+void createGlfw(Sandbox* e) {
   glfwInit();
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
@@ -179,7 +179,7 @@ void createGlfw(Sandbox *e) {
   e->window = glfwCreateWindow(800, 600, "Hello Vulkan", NULL, NULL);
 }
 
-void createSurface(Sandbox *e) {
+void createSurface(Sandbox* e) {
   printf("creating surface\n");
   VkResult result =
       glfwCreateWindowSurface(e->instance, e->window, NULL, &e->surface);
@@ -189,14 +189,14 @@ void createSurface(Sandbox *e) {
   }
 }
 
-void pickPhysicalDevice(Sandbox *e) {
+void pickPhysicalDevice(Sandbox* e) {
   uint32_t deviceCount;
   vkEnumeratePhysicalDevices(e->instance, &deviceCount, NULL);
   if (deviceCount < 1) {
     printf("no compatible devices present\n");
     exit(1);
   }
-  VkPhysicalDevice *devices = malloc(sizeof(VkPhysicalDevice) * deviceCount);
+  VkPhysicalDevice* devices = malloc(sizeof(VkPhysicalDevice) * deviceCount);
   vkEnumeratePhysicalDevices(e->instance, &deviceCount, devices);
   // skipped queue introspection logic for simplicity
   e->physicalDevice = devices[0];
@@ -204,7 +204,7 @@ void pickPhysicalDevice(Sandbox *e) {
   printf("selected physical device: %p\n", e->physicalDevice);
 }
 
-void createLogicalDevice(Sandbox *e) {
+void createLogicalDevice(Sandbox* e) {
   printf("creating logical device\n");
   float queuePriority = 1.0f;
   VkDeviceQueueCreateInfo queueCreateInfo = {
@@ -215,7 +215,7 @@ void createLogicalDevice(Sandbox *e) {
   VkPhysicalDeviceFeatures features = {
       .samplerAnisotropy = VK_TRUE,
   };
-  const char **ext = (const char *[]){VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+  const char** ext = (const char*[]){VK_KHR_SWAPCHAIN_EXTENSION_NAME};
   VkDeviceCreateInfo deviceCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
       .queueCreateInfoCount = 1,
@@ -231,12 +231,12 @@ void createLogicalDevice(Sandbox *e) {
   }
 }
 
-void getDeviceQueues(Sandbox *e) {
+void getDeviceQueues(Sandbox* e) {
   printf("getting device queue\n");
   vkGetDeviceQueue(e->device, 0, 0, &e->queue);
 }
 
-void createSwapchain(Sandbox *e) {
+void createSwapchain(Sandbox* e) {
   printf("creating swapchain\n");
   VkSurfaceCapabilitiesKHR surfaceCaps;
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(e->physicalDevice, e->surface,
@@ -287,7 +287,7 @@ void createSwapchain(Sandbox *e) {
   e->swapchainExtent = extent;
 }
 
-uint32_t findMemoryType(Sandbox *e, uint32_t typeFilter,
+uint32_t findMemoryType(Sandbox* e, uint32_t typeFilter,
                         VkMemoryPropertyFlags props) {
   VkPhysicalDeviceMemoryProperties memProps = {};
   vkGetPhysicalDeviceMemoryProperties(e->physicalDevice, &memProps);
@@ -301,11 +301,11 @@ uint32_t findMemoryType(Sandbox *e, uint32_t typeFilter,
   exit(1);
 }
 
-void createImage(Sandbox *e, uint32_t width, uint32_t height,
+void createImage(Sandbox* e, uint32_t width, uint32_t height,
                  uint32_t mipLevels, VkSampleCountFlagBits numSamples,
                  VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
-                 VkMemoryPropertyFlags props, VkImage *image,
-                 VkDeviceMemory *imageMemory) {
+                 VkMemoryPropertyFlags props, VkImage* image,
+                 VkDeviceMemory* imageMemory) {
   VkImageCreateInfo imageInfo = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = VK_IMAGE_TYPE_2D,
@@ -369,7 +369,7 @@ VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
   return imageView;
 }
 
-void createImageViews(Sandbox *e) {
+void createImageViews(Sandbox* e) {
   printf("creating image views\n");
   e->swapchainImageViews = malloc(sizeof(VkImageView) * e->imageCount);
   if (e->swapchainImageViews == NULL) {
@@ -383,7 +383,7 @@ void createImageViews(Sandbox *e) {
   }
 }
 
-void createRenderPass(Sandbox *e) {
+void createRenderPass(Sandbox* e) {
   printf("creating render pass\n");
   VkAttachmentDescription colorAttachment = {
       .format = e->swapchainImageFormat,
@@ -465,7 +465,7 @@ void createRenderPass(Sandbox *e) {
   }
 }
 
-void createDescriptorSetLayout(Sandbox *e) {
+void createDescriptorSetLayout(Sandbox* e) {
   printf("creating descriptor set layout\n");
   VkDescriptorSetLayoutBinding uboLayoutBinding = {
       .binding = 0,
@@ -535,8 +535,8 @@ VkVertexInputAttributeDescription getTextureAttrDesc() {
   return desc;
 }
 
-void *load(const char *filepath, size_t *size) {
-  FILE *file = fopen(filepath, "rb");
+void* load(const char* filepath, size_t* size) {
+  FILE* file = fopen(filepath, "rb");
   if (!file) {
     fprintf(stderr, "Failed to open file: %s\n", filepath);
     perror("");
@@ -545,7 +545,7 @@ void *load(const char *filepath, size_t *size) {
   fseek(file, 0, SEEK_END);
   *size = ftell(file);
   rewind(file);
-  void *content = malloc(*size);
+  void* content = malloc(*size);
   if (content == NULL) {
     printf("malloc failed\n");
   }
@@ -554,9 +554,9 @@ void *load(const char *filepath, size_t *size) {
   return content;
 }
 
-VkShaderModule createShaderModule(Sandbox *e, const char *filepath) {
+VkShaderModule createShaderModule(Sandbox* e, const char* filepath) {
   size_t size;
-  uint32_t *code = load(filepath, &size);
+  uint32_t* code = load(filepath, &size);
   VkShaderModuleCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
       .pCode = code,
@@ -572,7 +572,7 @@ VkShaderModule createShaderModule(Sandbox *e, const char *filepath) {
   return module;
 }
 
-void createGraphicsPipeline(Sandbox *e) {
+void createGraphicsPipeline(Sandbox* e) {
   VkShaderModule triVert =
       createShaderModule(e, "shaders/compiled/tri.vert.spv");
   VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
@@ -715,7 +715,7 @@ void createGraphicsPipeline(Sandbox *e) {
   vkDestroyShaderModule(e->device, triVert, NULL);
 }
 
-void createCommandPool(Sandbox *e) {
+void createCommandPool(Sandbox* e) {
   printf("creating command pool\n");
   VkCommandPoolCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -730,7 +730,7 @@ void createCommandPool(Sandbox *e) {
   }
 }
 
-void createColorResources(Sandbox *e) {
+void createColorResources(Sandbox* e) {
   printf("creating color resources\n");
   VkFormat colorFormat = e->swapchainImageFormat;
   createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
@@ -743,7 +743,7 @@ void createColorResources(Sandbox *e) {
                                       VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
 
-void createDepthResources(Sandbox *e) {
+void createDepthResources(Sandbox* e) {
   printf("creating depth resources\n");
   VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
   createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
@@ -755,7 +755,7 @@ void createDepthResources(Sandbox *e) {
                                       VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 }
 
-void createFramebuffers(Sandbox *e) {
+void createFramebuffers(Sandbox* e) {
   printf("creating framebuffers\n");
   e->framebuffers = malloc(sizeof(VkFramebuffer) * e->imageCount);
   if (e->framebuffers == NULL) {
@@ -786,9 +786,9 @@ void createFramebuffers(Sandbox *e) {
   }
 }
 
-void createBuffer(Sandbox *e, VkDeviceSize size, VkBufferUsageFlags usage,
-                  VkMemoryPropertyFlags props, VkBuffer *buffer,
-                  VkDeviceMemory *memory) {
+void createBuffer(Sandbox* e, VkDeviceSize size, VkBufferUsageFlags usage,
+                  VkMemoryPropertyFlags props, VkBuffer* buffer,
+                  VkDeviceMemory* memory) {
   VkBufferCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
       .size = size,
@@ -815,7 +815,7 @@ void createBuffer(Sandbox *e, VkDeviceSize size, VkBufferUsageFlags usage,
   vkBindBufferMemory(e->device, *buffer, *memory, 0);
 }
 
-VkCommandBuffer beginSingleTimeCommands(Sandbox *e) {
+VkCommandBuffer beginSingleTimeCommands(Sandbox* e) {
   VkCommandBufferAllocateInfo allocInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
       .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -832,7 +832,7 @@ VkCommandBuffer beginSingleTimeCommands(Sandbox *e) {
   return commandBuffer;
 }
 
-void endSingleTimeCommands(Sandbox *e, VkCommandBuffer commandBuffer) {
+void endSingleTimeCommands(Sandbox* e, VkCommandBuffer commandBuffer) {
   vkEndCommandBuffer(commandBuffer);
   VkSubmitInfo submitInfo = {
       .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -844,7 +844,7 @@ void endSingleTimeCommands(Sandbox *e, VkCommandBuffer commandBuffer) {
   vkFreeCommandBuffers(e->device, e->commandPool, 1, &commandBuffer);
 }
 
-void transitionImageLayout(Sandbox *e, VkImage image, VkFormat format,
+void transitionImageLayout(Sandbox* e, VkImage image, VkFormat format,
                            VkImageLayout oldLayout, VkImageLayout newLayout,
                            uint32_t mipLevels) {
   VkCommandBuffer cmdBuff = beginSingleTimeCommands(e);
@@ -892,7 +892,7 @@ void transitionImageLayout(Sandbox *e, VkImage image, VkFormat format,
   endSingleTimeCommands(e, cmdBuff);
 }
 
-void copyBufferToImage(Sandbox *e, VkBuffer buffer, VkImage image,
+void copyBufferToImage(Sandbox* e, VkBuffer buffer, VkImage image,
                        uint32_t width, uint32_t height) {
   VkCommandBuffer cmdBuff = beginSingleTimeCommands(e);
   VkBufferImageCopy region = {
@@ -914,7 +914,7 @@ void copyBufferToImage(Sandbox *e, VkBuffer buffer, VkImage image,
   endSingleTimeCommands(e, cmdBuff);
 }
 
-void generateMipmaps(Sandbox *e, VkImage image, uint32_t texWidth,
+void generateMipmaps(Sandbox* e, VkImage image, uint32_t texWidth,
                      uint32_t texHeight, uint32_t mipLevels) {
   printf("generateMipmaps\n");
   // Skip checking physical device format capabilities
@@ -997,10 +997,10 @@ void generateMipmaps(Sandbox *e, VkImage image, uint32_t texWidth,
   endSingleTimeCommands(e, commandBuffer);
 }
 
-void createTexture(Sandbox *e) {
+void createTexture(Sandbox* e) {
   printf("creating texture\n");
   int texWidth, texHeight, texChannels;
-  stbi_uc *pixels = stbi_load("assets/viking_room.png", &texWidth, &texHeight,
+  stbi_uc* pixels = stbi_load("assets/viking_room.png", &texWidth, &texHeight,
                               &texChannels, STBI_rgb_alpha);
   e->mipLevels = ((uint32_t)floor(log2(fmax(texWidth, texHeight)))) + 1;
   VkDeviceSize dSize = texWidth * texHeight * 4;
@@ -1010,7 +1010,7 @@ void createTexture(Sandbox *e) {
                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                &stage, &stageMem);
-  void *data;
+  void* data;
   vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
   memcpy(data, pixels, dSize);
   vkUnmapMemory(e->device, stageMem);
@@ -1032,10 +1032,10 @@ void createTexture(Sandbox *e) {
   vkFreeMemory(e->device, stageMem, NULL);
 }
 
-void createTextureImage(Sandbox *e) {
+void createTextureImage(Sandbox* e) {
   printf("creating texture image\n");
   int texWidth, texHeight, texChannels;
-  stbi_uc *pixels = stbi_load("assets/viking_room.png", &texWidth, &texHeight,
+  stbi_uc* pixels = stbi_load("assets/viking_room.png", &texWidth, &texHeight,
                               &texChannels, STBI_rgb_alpha);
   e->mipLevels = ((uint32_t)floor(log2(fmax(texWidth, texHeight)))) + 1;
   VkDeviceSize dSize = texWidth * texHeight * 4;
@@ -1045,7 +1045,7 @@ void createTextureImage(Sandbox *e) {
                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                &stage, &stageMem);
-  void *data;
+  void* data;
   vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
   memcpy(data, pixels, dSize);
   vkUnmapMemory(e->device, stageMem);
@@ -1067,14 +1067,14 @@ void createTextureImage(Sandbox *e) {
   vkFreeMemory(e->device, stageMem, NULL);
 }
 
-void createTextureImageView(Sandbox *e) {
+void createTextureImageView(Sandbox* e) {
   printf("creating texture image view\n");
   e->textureImageView =
       createImageView(e->device, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                       VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels);
 }
 
-void createTextureSampler(Sandbox *e) {
+void createTextureSampler(Sandbox* e) {
   printf("creating texture sampler\n");
   VkPhysicalDeviceProperties props = {};
   vkGetPhysicalDeviceProperties(e->physicalDevice, &props);
@@ -1103,7 +1103,7 @@ void createTextureSampler(Sandbox *e) {
   }
 }
 
-void createUniformBuffers(Sandbox *e) {
+void createUniformBuffers(Sandbox* e) {
   printf("creating uniform buffers\n");
   VkDeviceSize bufferSize = sizeof(UniformBufferObject);
   e->uniformBuffers = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
@@ -1117,7 +1117,7 @@ void createUniformBuffers(Sandbox *e) {
     printf("malloc failed\n");
     exit(1);
   }
-  e->uniformBuffersMapped = malloc(sizeof(void *) * MAX_FRAMES_IN_FLIGHT);
+  e->uniformBuffersMapped = malloc(sizeof(void*) * MAX_FRAMES_IN_FLIGHT);
   if (e->uniformBuffersMapped == NULL) {
     printf("malloc failed\n");
     exit(1);
@@ -1132,7 +1132,7 @@ void createUniformBuffers(Sandbox *e) {
   }
 }
 
-void createDescriptorPool(Sandbox *e) {
+void createDescriptorPool(Sandbox* e) {
   printf("creating descriptor pool\n");
   VkDescriptorPoolSize poolSize = {
       .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -1159,7 +1159,7 @@ void createDescriptorPool(Sandbox *e) {
   };
 }
 
-void createDescriptorSets(Sandbox *e) {
+void createDescriptorSets(Sandbox* e) {
   printf("creating descriptor sets\n");
   VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -1215,7 +1215,7 @@ void createDescriptorSets(Sandbox *e) {
   }
 }
 
-void createCommandBuffers(Sandbox *e) {
+void createCommandBuffers(Sandbox* e) {
   e->commandBuffers = malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkCommandBuffer));
   if (e->commandBuffers == NULL) {
     printf("malloc failed\n");
@@ -1235,7 +1235,7 @@ void createCommandBuffers(Sandbox *e) {
   }
 }
 
-void createSyncObjects(Sandbox *e) {
+void createSyncObjects(Sandbox* e) {
   printf("creating sync objects\n");
   e->imageAvailableSemaphores =
       malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
@@ -1283,7 +1283,7 @@ void createSyncObjects(Sandbox *e) {
   }
 }
 
-void copyBuffer(Sandbox *e, VkBuffer srcBuffer, VkBuffer dstBuffer,
+void copyBuffer(Sandbox* e, VkBuffer srcBuffer, VkBuffer dstBuffer,
                 VkDeviceSize size) {
   VkCommandBufferAllocateInfo allocInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -1315,8 +1315,8 @@ void copyBuffer(Sandbox *e, VkBuffer srcBuffer, VkBuffer dstBuffer,
   vkFreeCommandBuffers(e->device, e->commandPool, 1, &commandBuffer);
 }
 
-void loadFile(void *ctx, const char *filename, const int isMtl,
-              const char *objFilename, char **data, size_t *len) {
+void loadFile(void* ctx, const char* filename, const int isMtl,
+              const char* objFilename, char** data, size_t* len) {
   if (isMtl == 1) {
     return;
   }
@@ -1324,11 +1324,11 @@ void loadFile(void *ctx, const char *filename, const int isMtl,
   printf("load file len: %ld\n", *len);
 }
 
-void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
+void loadModel(const char* filename, Vertex** vertices, int* numVertices) {
   printf("loading model: %s\n", filename);
   tinyobj_attrib_t attrib;
-  tinyobj_shape_t *shapes;
-  tinyobj_material_t *materials;
+  tinyobj_shape_t* shapes;
+  tinyobj_material_t* materials;
   size_t numShapes;
   size_t numMaterials;
   int result =
@@ -1350,7 +1350,7 @@ void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
     texCoords[i][1] = 1.0f - attrib.texcoords[i * 2 + 1];
   }
 
-  Vertex *v = malloc(sizeof(Vertex) * attrib.num_faces);
+  Vertex* v = malloc(sizeof(Vertex) * attrib.num_faces);
   if (v == NULL) {
     printf("malloc failed\n");
     exit(1);
@@ -1371,7 +1371,7 @@ void loadModel(const char *filename, Vertex **vertices, int *numVertices) {
   *vertices = v;
 }
 
-void updateUniformBuffer(Sandbox *e, uint32_t currentImage) {
+void updateUniformBuffer(Sandbox* e, uint32_t currentImage) {
   if (e->start == 0) {
     e->start = clock();
   }
@@ -1399,7 +1399,7 @@ void updateUniformBuffer(Sandbox *e, uint32_t currentImage) {
   memcpy(e->uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
 }
 
-void recordCommandBuffer(Sandbox *e, VkCommandBuffer commandBuffer,
+void recordCommandBuffer(Sandbox* e, VkCommandBuffer commandBuffer,
                          uint32_t imageIndex) {
   VkCommandBufferBeginInfo begingInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1457,7 +1457,7 @@ void recordCommandBuffer(Sandbox *e, VkCommandBuffer commandBuffer,
   }
 }
 
-void drawFrame(Sandbox *e) {
+void drawFrame(Sandbox* e) {
   vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
                   UINT64_MAX);
   vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
@@ -1504,7 +1504,7 @@ void drawFrame(Sandbox *e) {
   e->currentFrame = (e->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void createModelBuffer(Sandbox *e) {
+void createModelBuffer(Sandbox* e) {
   VkBuffer stagingBuffer;
   VkDeviceMemory stagingMemory;
   VkDeviceSize bufferSize = sizeof(Vertex) * e->modelVerticesNum;
@@ -1513,15 +1513,15 @@ void createModelBuffer(Sandbox *e) {
                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                &stagingBuffer, &stagingMemory);
 
-  void *data;
+  void* data;
   vkMapMemory(e->device, stagingMemory, 0, bufferSize, 0, &data);
   memcpy(data, e->modelVertices, bufferSize);
   vkUnmapMemory(e->device, stagingMemory);
-  createBuffer(e, bufferSize,
-               VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->modelBuffer,
-               &e->modelBufferMemory);
+  createBuffer(
+      e, bufferSize,
+      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->modelBuffer,
+      &e->modelBufferMemory);
   copyBuffer(e, stagingBuffer, e->modelBuffer, bufferSize);
   vkDestroyBuffer(e->device, stagingBuffer, NULL);
   vkFreeMemory(e->device, stagingMemory, NULL);
@@ -1529,8 +1529,8 @@ void createModelBuffer(Sandbox *e) {
 
 // TODO mess end
 
-Sandbox *makeEngine() {
-  Sandbox *e = malloc(sizeof(Sandbox));
+Sandbox* makeEngine() {
+  Sandbox* e = malloc(sizeof(Sandbox));
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
   e->start = 0;
@@ -1562,7 +1562,7 @@ Sandbox *makeEngine() {
   return e;
 }
 
-void destroySwapchainImages(Sandbox *e) {
+void destroySwapchainImages(Sandbox* e) {
   for (uint32_t i = 0; i < e->imageCount; i++) {
     // swapchain images are destroyed along with swapchain
     vkDestroyImageView(e->device, e->swapchainImageViews[i], NULL);
@@ -1571,45 +1571,45 @@ void destroySwapchainImages(Sandbox *e) {
   free(e->swapchainImageViews);
 }
 
-void destroyColorResources(Sandbox *e) {
+void destroyColorResources(Sandbox* e) {
   vkDestroyImageView(e->device, e->colorImageView, NULL);
   vkDestroyImage(e->device, e->colorImage, NULL);
   vkFreeMemory(e->device, e->colorImageMemory, NULL);
 }
 
-void destroyDepthResources(Sandbox *e) {
+void destroyDepthResources(Sandbox* e) {
   vkDestroyImageView(e->device, e->depthImageView, NULL);
   vkDestroyImage(e->device, e->depthImage, NULL);
   vkFreeMemory(e->device, e->depthImageMemory, NULL);
 }
 
-void destroyFramebuffers(Sandbox *e) {
+void destroyFramebuffers(Sandbox* e) {
   for (uint32_t i = 0; i < e->imageCount; i++) {
     vkDestroyFramebuffer(e->device, e->framebuffers[i], NULL);
   }
   free(e->framebuffers);
 }
 
-void destroyUniformBuffers(Sandbox *e) {
+void destroyUniformBuffers(Sandbox* e) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroyBuffer(e->device, e->uniformBuffers[i], NULL);
     vkFreeMemory(e->device, e->uniformBuffersMemoryList[i], NULL);
   }
 }
 
-void destroySemaphores(Sandbox *e, VkSemaphore *semaphores) {
+void destroySemaphores(Sandbox* e, VkSemaphore* semaphores) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroySemaphore(e->device, semaphores[i], NULL);
   }
 }
 
-void destroyFences(Sandbox *e, VkFence *fences) {
+void destroyFences(Sandbox* e, VkFence* fences) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroyFence(e->device, fences[i], NULL);
   }
 }
 
-void freeEngine(Sandbox *engine) {
+void freeEngine(Sandbox* engine) {
   vkDestroySwapchainKHR(engine->device, engine->swapchain, NULL);
   destroySwapchainImages(engine);
   destroyColorResources(engine);
@@ -1639,7 +1639,7 @@ void freeEngine(Sandbox *engine) {
   free(engine);
 }
 
-void run(Sandbox *e) {
+void run(Sandbox* e) {
   while (!glfwWindowShouldClose(e->window)) {
     glfwPollEvents();
     drawFrame(e);

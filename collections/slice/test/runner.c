@@ -1,20 +1,21 @@
-#include "slice.h"
-#include "test.h"
 #include <string.h>
 
-void testSliceNominal(TestRun *r) {
-  Slice *s = sliceMake();
+#include "slice.h"
+#include "test.h"
+
+void testSliceNominal(TestRun* r) {
+  Slice* s = sliceMake();
   sliceAppend(s, "hello");
-  char *val = sliceGet(s, 0);
+  char* val = sliceGet(s, 0);
   if (strcmp(val, "hello") != 0) {
     testFail(r, "Error getting the value from the slice");
   }
   sliceFree(s);
 }
 
-void testSliceGrow(TestRun *r) {
+void testSliceGrow(TestRun* r) {
   int len = 100;
-  Slice *s = sliceMake();
+  Slice* s = sliceMake();
   for (int i = 0; i < len; i++) {
     sliceAppend(s, "hello");
   }
@@ -26,7 +27,7 @@ void testSliceGrow(TestRun *r) {
 }
 
 int main() {
-  TestSuite *s = testSuiteMake("slice");
+  TestSuite* s = testSuiteMake("slice");
   testRegisterFn(s, "testSliceNominal", testSliceNominal);
   testRegisterFn(s, "testSliceGrow", testSliceGrow);
   testRun(s);

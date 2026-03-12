@@ -5,12 +5,12 @@
 
 typedef struct Queue Queue;
 
-Queue *queueMake(Arena *a);
+Queue* queueMake(Arena* a);
 
-void queueOffer(Queue *q, void *v);
+void queueOffer(Queue* q, void* v);
 
-void *queuePoll(Queue *q);
+void* queuePoll(Queue* q);
 
-int queueLen(Queue *q);
+int queueLen(Queue* q);
 
-#endif // !QUEUE_H
+#endif  // !QUEUE_H

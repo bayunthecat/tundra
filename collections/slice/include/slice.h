@@ -3,14 +3,14 @@
 
 typedef struct Slice Slice;
 
-Slice *sliceMake();
+Slice* sliceMake();
 
-void sliceFree(Slice *s);
+void sliceFree(Slice* s);
 
-void sliceAppend(Slice *s, void *v);
+void sliceAppend(Slice* s, void* v);
 
-void *sliceGet(Slice *s, unsigned int index);
+void* sliceGet(Slice* s, unsigned int index);
 
-unsigned int sliceLen(Slice *s);
+unsigned int sliceLen(Slice* s);
 
 #endif

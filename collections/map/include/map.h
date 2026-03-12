@@ -7,7 +7,7 @@
 
 typedef struct Map Map;
 
-typedef uint64_t (*hash)(void *);
+typedef uint64_t (*hash)(void*);
 
 typedef struct {
   float loadFactor;
@@ -15,18 +15,18 @@ typedef struct {
   hash hashFn;
 } MapOpts;
 
-uint64_t charPtrHash(char *key);
+uint64_t charPtrHash(char* key);
 
-void mapPut(Map *m, void *k, void *v);
+void mapPut(Map* m, void* k, void* v);
 
-void *mapGet(Map *m, void *k);
+void* mapGet(Map* m, void* k);
 
-int mapLen(Map *m);
+int mapLen(Map* m);
 
-Map *mapMake(MapOpts *opts);
+Map* mapMake(MapOpts* opts);
 
-Map *mapMakeDef();
+Map* mapMakeDef();
 
-void mapFree(Map *m);
+void mapFree(Map* m);
 
 #endif

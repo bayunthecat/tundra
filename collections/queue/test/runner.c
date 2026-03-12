@@ -1,11 +1,12 @@
+#include <stdlib.h>
+
 #include "mem.h"
 #include "queue.h"
 #include "test.h"
-#include <stdlib.h>
 
-void testQueueNominal(TestRun *r) {
-  Arena *a = arenaMake(1024);
-  Queue *q = queueMake(a);
+void testQueueNominal(TestRun* r) {
+  Arena* a = arenaMake(1024);
+  Queue* q = queueMake(a);
   int v1 = 100;
   int v2 = 200;
   queueOffer(q, &v1);
@@ -14,11 +15,11 @@ void testQueueNominal(TestRun *r) {
   if (len != 2) {
     testFail(r, "want len 2, got another");
   }
-  int *pollV1 = queuePoll(q);
+  int* pollV1 = queuePoll(q);
   if (*pollV1 != v1) {
     testFail(r, "values do not match");
   }
-  int *pollV2 = queuePoll(q);
+  int* pollV2 = queuePoll(q);
   if (*pollV2 != v2) {
     testFail(r, "values do not match");
   }
@@ -31,16 +32,16 @@ void populateIntArray(int arr[], int len) {
   }
 }
 
-void testQueueLarge(TestRun *r) {
+void testQueueLarge(TestRun* r) {
   int len = 100000;
   int random[len];
   populateIntArray(random, len);
-  Arena *a = arenaMake(1800000);
-  Queue *q = queueMake(a);
+  Arena* a = arenaMake(1800000);
+  Queue* q = queueMake(a);
   for (int i = 0; i < len; i++) {
     queueOffer(q, &random[i]);
   }
-  int *pPolled;
+  int* pPolled;
   int polled;
   for (int i = 0; i < len; i++) {
     pPolled = queuePoll(q);
@@ -53,7 +54,7 @@ void testQueueLarge(TestRun *r) {
 }
 
 int main() {
-  TestSuite *s = testSuiteMake("queue");
+  TestSuite* s = testSuiteMake("queue");
   testRegisterFn(s, "testQueueNominal", testQueueNominal);
   testRegisterFn(s, "testQueueLarge", testQueueLarge);
   testRun(s);

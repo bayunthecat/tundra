@@ -6,15 +6,15 @@ typedef struct SQueue {
   int cap;
   int head;
   int tail;
-  void **data;
+  void** data;
 } SQueue;
 
-void sQueueInit(SQueue *sq, void **storage, int cap);
+void sQueueInit(SQueue* sq, void** storage, int cap);
 
-int len(SQueue *sq);
+int len(SQueue* sq);
 
-void sQueueOffer(SQueue *sq, void *data);
+void sQueueOffer(SQueue* sq, void* data);
 
-void *sQueuePoll(SQueue *sq);
+void* sQueuePoll(SQueue* sq);
 
-#endif // !SQUEUE_H
+#endif  // !SQUEUE_H

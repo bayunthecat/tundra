@@ -1,8 +1,7 @@
 #include "model.h"
 #include "test.h"
-#include <stdlib.h>
 
-void testBoardNominal(TestRun *r) {
+void testBoardNominal(TestRun* r) {
   unsigned int seed = 1758855645;
   int boardVals[4][4] = {
       {0, 1, 0, 0},
@@ -10,7 +9,7 @@ void testBoardNominal(TestRun *r) {
       {7, 9, 6, 9},
       {4, 6, 8, 4},
   };
-  Board *brd = boardMake(seed, 4, 4);
+  Board* brd = boardMake(seed, 4, 4);
   if (brd == NULL) {
     testFail(r, "failed to create the board");
   }
@@ -28,7 +27,7 @@ void testBoardNominal(TestRun *r) {
   boardFree(brd);
 }
 
-void testRotate(TestRun *r) {
+void testRotate(TestRun* r) {
   unsigned int seed = 1758855645;
   int boardVals[4][4] = {
       {0, 8, 0, 0},
@@ -42,7 +41,7 @@ void testRotate(TestRun *r) {
       {1, 1, 1, 1},
       {1, 1, 1, 1},
   };
-  Board *brd = boardMake(seed, 4, 4);
+  Board* brd = boardMake(seed, 4, 4);
   if (brd == NULL) {
     testFail(r, "failed to create the board");
   }
@@ -62,7 +61,7 @@ void testRotate(TestRun *r) {
 }
 
 int main() {
-  TestSuite *s = testSuiteMake("model");
+  TestSuite* s = testSuiteMake("model");
   testRegisterFn(s, "testBoardNominal", testBoardNominal);
   testRegisterFn(s, "testRotate", testRotate);
   testRun(s);
