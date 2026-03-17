@@ -9,7 +9,6 @@ typedef struct VlkContext {
   VkPhysicalDevice physicalDevice;
   VkDevice device;
   VkQueue queue;
-
   GLFWwindow* window;
 } VlkContext;
 

@@ -9,6 +9,7 @@
 #include <model.h>
 #include <string.h>
 #include <sys/types.h>
+
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
 #define TINYOBJ_LOADER_C_IMPLEMENTATION
@@ -28,6 +29,7 @@
 #include "tinyobj_loader_c.h"
 #include "view.h"
 #include "vlk_context.h"
+#include "vlk_swapchain.h"
 
 #define MAX_FRAMES_IN_FLIGHT 4
 #define ROWS 13
@@ -56,6 +58,8 @@ typedef struct RenderObject {
 
 struct View {
   VlkContext vlkContext;
+
+  VlkSwapchain vlkSwapchain;
 
   int tShapeNum;
 
@@ -117,21 +121,9 @@ struct View {
 
   VkSampler textureSampler;
 
-  VkImage* swapchainImages;
-
-  VkImageView* swapchainImageViews;
-
   VkPipelineLayout pipelineLayout;
 
   uint32_t imageCount;
-
-  VkFormat swapchainImageFormat;
-
-  VkExtent2D swapchainExtent;
-
-  VkSwapchainKHR swapchain;
-
-  VkSurfaceKHR surface;
 
   VkRenderPass renderPass;
 
@@ -193,70 +185,6 @@ struct View {
 
   clock_t start;
 };
-
-void createSurface(View* e) {
-  printf("creating surface\n");
-  printf("vkInstance: %p\n", e->vlkContext.vkInstance);
-  VkResult result = glfwCreateWindowSurface(
-      e->vlkContext.vkInstance, e->vlkContext.window, NULL, &e->surface);
-  if (result != VK_SUCCESS) {
-    printf("failed to create window surface, error code: %d\n", result);
-    exit(1);
-  }
-}
-
-void createSwapchain(View* e) {
-  printf("creating swapchain\n");
-  VkSurfaceCapabilitiesKHR surfaceCaps;
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(e->vlkContext.physicalDevice,
-                                            e->surface, &surfaceCaps);
-  VkExtent2D extent = {
-      .width = SCREEN_W,
-      .height = SCREEN_H,
-  };
-  uint32_t swapchainImageCount = surfaceCaps.minImageCount + 1;
-  VkFormat imageFormat = VK_FORMAT_B8G8R8A8_UNORM;
-  VkSwapchainCreateInfoKHR info = {
-      .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-      .imageFormat = imageFormat,
-      .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-      .presentMode = VK_PRESENT_MODE_FIFO_KHR,
-      .imageExtent = extent,
-      .surface = e->surface,
-      .minImageCount = swapchainImageCount,
-      .imageArrayLayers = 1,
-      .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-      .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-      .queueFamilyIndexCount = 1,
-      .pQueueFamilyIndices = 0,
-      .preTransform = surfaceCaps.currentTransform,
-      .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-      .clipped = VK_TRUE,
-      .oldSwapchain = VK_NULL_HANDLE,
-  };
-  VkResult result =
-      vkCreateSwapchainKHR(e->vlkContext.device, &info, NULL, &e->swapchain);
-  if (result != VK_SUCCESS) {
-    printf("failed to create swapchain\n");
-    exit(1);
-  }
-  vkGetSwapchainImagesKHR(e->vlkContext.device, e->swapchain, &e->imageCount,
-                          NULL);
-  if (e->imageCount == 0) {
-    printf("no images in the swapchain\n");
-    exit(1);
-  }
-  printf("swapchain images: %d\n", e->imageCount);
-  e->swapchainImages = malloc(sizeof(VkImage) * e->imageCount);
-  if (e->swapchainImages == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  vkGetSwapchainImagesKHR(e->vlkContext.device, e->swapchain, &e->imageCount,
-                          e->swapchainImages);
-  e->swapchainImageFormat = imageFormat;
-  e->swapchainExtent = extent;
-}
 
 uint32_t findMemoryTypeNew(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
                            VkMemoryPropertyFlags props) {
@@ -354,24 +282,10 @@ VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
   return imageView;
 }
 
-void createImageViews(View* e) {
-  printf("creating image views\n");
-  e->swapchainImageViews = malloc(sizeof(VkImageView) * e->imageCount);
-  if (e->swapchainImageViews == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  for (uint32_t i = 0; i < e->imageCount; i++) {
-    e->swapchainImageViews[i] =
-        createImageView(e->vlkContext.device, e->swapchainImages[i],
-                        e->swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
-  }
-}
-
 void createRenderPass(View* e) {
   printf("creating render pass\n");
   VkAttachmentDescription colorAttachment = {
-      .format = e->swapchainImageFormat,
+      .format = e->vlkSwapchain.swapchainImageFormat,
       .samples = e->msaaSample,
       .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
       .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -391,7 +305,7 @@ void createRenderPass(View* e) {
       .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
   };
   VkAttachmentDescription colorAttachmentResolve = {
-      .format = e->swapchainImageFormat,
+      .format = e->vlkSwapchain.swapchainImageFormat,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
       .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -616,14 +530,14 @@ void createGraphicsPipeline(View* e) {
   VkViewport viewport = {
       .x = 0.0f,
       .y = 0.0f,
-      .width = (float)e->swapchainExtent.width,
-      .height = (float)e->swapchainExtent.height,
+      .width = (float)e->vlkSwapchain.swapchainExtent.width,
+      .height = (float)e->vlkSwapchain.swapchainExtent.height,
       .minDepth = 0.0f,
       .maxDepth = 1.0f,
   };
   VkRect2D scissor = {
       .offset = {0, 0},
-      .extent = e->swapchainExtent,
+      .extent = e->vlkSwapchain.swapchainExtent,
   };
   VkPipelineViewportStateCreateInfo viewportStateInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -726,9 +640,10 @@ void createCommandPool(View* e) {
 
 void createColorResources(View* e) {
   printf("creating color resources\n");
-  VkFormat colorFormat = e->swapchainImageFormat;
-  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
-              e->msaaSample, colorFormat, VK_IMAGE_TILING_OPTIMAL,
+  VkFormat colorFormat = e->vlkSwapchain.swapchainImageFormat;
+  createImage(e, e->vlkSwapchain.swapchainExtent.width,
+              e->vlkSwapchain.swapchainExtent.height, 1, e->msaaSample,
+              colorFormat, VK_IMAGE_TILING_OPTIMAL,
               VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                   VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->colorImage,
@@ -741,8 +656,9 @@ void createColorResources(View* e) {
 void createDepthResources(View* e) {
   printf("creating depth resources\n");
   VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
-  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
-              e->msaaSample, depthFormat, VK_IMAGE_TILING_OPTIMAL,
+  createImage(e, e->vlkSwapchain.swapchainExtent.width,
+              e->vlkSwapchain.swapchainExtent.height, 1, e->msaaSample,
+              depthFormat, VK_IMAGE_TILING_OPTIMAL,
               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->depthImage,
               &e->depthImageMemory);
@@ -753,24 +669,25 @@ void createDepthResources(View* e) {
 
 void createFramebuffers(View* e) {
   printf("creating framebuffers\n");
-  e->framebuffers = malloc(sizeof(VkFramebuffer) * e->imageCount);
+  e->framebuffers =
+      malloc(sizeof(VkFramebuffer) * e->vlkSwapchain.swapchainImageCount);
   if (e->framebuffers == NULL) {
     printf("malloc failed\n");
     exit(1);
   }
-  for (uint32_t i = 0; i < e->imageCount; i++) {
+  for (uint32_t i = 0; i < e->vlkSwapchain.swapchainImageCount; i++) {
     VkImageView attachments[] = {
         e->colorImageView,
         e->depthImageView,
-        e->swapchainImageViews[i],
+        e->vlkSwapchain.swapchainImageViews[i],
     };
     VkFramebufferCreateInfo framebufferInfo = {
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass = e->renderPass,
         .attachmentCount = 3,
         .pAttachments = attachments,
-        .width = e->swapchainExtent.width,
-        .height = e->swapchainExtent.height,
+        .width = e->vlkSwapchain.swapchainExtent.width,
+        .height = e->vlkSwapchain.swapchainExtent.height,
         .layers = 1,
     };
     VkResult result = vkCreateFramebuffer(
@@ -1428,8 +1345,8 @@ void updateUniformBuffer(View* e, uint32_t currentImage) {
       .proj = GLM_MAT4_IDENTITY_INIT,
       .resolution =
           {
-              (float)e->swapchainExtent.width,
-              (float)e->swapchainExtent.height,
+              (float)e->vlkSwapchain.swapchainExtent.width,
+              (float)e->vlkSwapchain.swapchainExtent.height,
           },
   };
   vec3 eye = {0.0f, 0.0f, 50.0f};
@@ -1437,7 +1354,8 @@ void updateUniformBuffer(View* e, uint32_t currentImage) {
   vec3 up = {0.0f, 1.0f, 0.0f};
   glm_lookat(eye, center, up, ubo.view);
   glm_perspective(glm_rad(FOV),
-                  e->swapchainExtent.width / (float)e->swapchainExtent.height,
+                  e->vlkSwapchain.swapchainExtent.width /
+                      (float)e->vlkSwapchain.swapchainExtent.height,
                   0.1f, 100.0f, ubo.proj);
   ubo.proj[1][1] *= -1;
   memcpy(e->uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -1472,7 +1390,7 @@ void recordCommandBuffer(View* e, VkCommandBuffer commandBuffer,
       .renderPass = e->renderPass,
       .framebuffer = e->framebuffers[imageIndex],
       .renderArea.offset = {0, 0},
-      .renderArea.extent = e->swapchainExtent,
+      .renderArea.extent = e->vlkSwapchain.swapchainExtent,
       .pClearValues = clears,
       .clearValueCount = 2,
   };
@@ -1483,15 +1401,15 @@ void recordCommandBuffer(View* e, VkCommandBuffer commandBuffer,
   VkViewport viewport = {
       .x = 0.0f,
       .y = 0.0f,
-      .width = e->swapchainExtent.width,
-      .height = e->swapchainExtent.height,
+      .width = e->vlkSwapchain.swapchainExtent.width,
+      .height = e->vlkSwapchain.swapchainExtent.height,
       .minDepth = 0.0f,
       .maxDepth = 1.0f,
   };
   vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
   VkRect2D scissor = {
       .offset = {0, 0},
-      .extent = e->swapchainExtent,
+      .extent = e->vlkSwapchain.swapchainExtent,
   };
   vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
   vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1519,7 +1437,8 @@ void drawFrame(View* e) {
   vkResetFences(e->vlkContext.device, 1, &e->inFlight[e->currentFrame]);
 
   uint32_t imageIndex;
-  vkAcquireNextImageKHR(e->vlkContext.device, e->swapchain, UINT64_MAX,
+  vkAcquireNextImageKHR(e->vlkContext.device, e->vlkSwapchain.swapchain,
+                        UINT64_MAX,
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
 
@@ -1550,7 +1469,7 @@ void drawFrame(View* e) {
       .waitSemaphoreCount = 1,
       .pWaitSemaphores = &e->renderFinishedSemaphores[imageIndex],
       .swapchainCount = 1,
-      .pSwapchains = &e->swapchain,
+      .pSwapchains = &e->vlkSwapchain.swapchain,
       .pImageIndices = &imageIndex,
   };
   VkResult result = vkQueuePresentKHR(e->vlkContext.queue, &presentInfo);
@@ -1569,9 +1488,7 @@ View* makeView() {
   e->currentFrame = 0;
   e->start = 0;
   vlkCreateContex(&e->vlkContext);
-  createSurface(e);
-  createSwapchain(e);
-  createImageViews(e);
+  vlkCreateSwapchain(&e->vlkContext, &e->vlkSwapchain);
   createRenderPass(e);
   createDescriptorSetLayout(e);
   createGraphicsPipeline(e);
@@ -1598,12 +1515,10 @@ View* makeView() {
 }
 
 void destroySwapchainImages(View* e) {
-  for (uint32_t i = 0; i < e->imageCount; i++) {
-    // swapchain images are destroyed along with swapchain
-    vkDestroyImageView(e->vlkContext.device, e->swapchainImageViews[i], NULL);
+  for (uint32_t i = 0; i < e->vlkSwapchain.swapchainImageCount; i++) {
+    vkDestroyImageView(e->vlkContext.device,
+                       e->vlkSwapchain.swapchainImageViews[i], NULL);
   }
-  free(e->swapchainImages);
-  free(e->swapchainImageViews);
 }
 
 void destroyColorResources(View* e) {
@@ -1619,7 +1534,7 @@ void destroyDepthResources(View* e) {
 }
 
 void destroyFramebuffers(View* e) {
-  for (uint32_t i = 0; i < e->imageCount; i++) {
+  for (uint32_t i = 0; i < e->vlkSwapchain.swapchainImageCount; i++) {
     vkDestroyFramebuffer(e->vlkContext.device, e->framebuffers[i], NULL);
   }
   free(e->framebuffers);
@@ -1663,12 +1578,14 @@ void destroyShapesBuffers(View* e) {
 }
 
 void freeView(View* view) {
-  vkDestroySwapchainKHR(view->vlkContext.device, view->swapchain, NULL);
+  vkDestroySwapchainKHR(view->vlkContext.device, view->vlkSwapchain.swapchain,
+                        NULL);
   destroySwapchainImages(view);
   destroyColorResources(view);
   destroyDepthResources(view);
   destroyFramebuffers(view);
-  vkDestroySurfaceKHR(view->vlkContext.vkInstance, view->surface, NULL);
+  vkDestroySurfaceKHR(view->vlkContext.vkInstance, view->vlkSwapchain.surface,
+                      NULL);
   vkDestroyRenderPass(view->vlkContext.device, view->renderPass, NULL);
   vkDestroyPipelineLayout(view->vlkContext.device, view->pipelineLayout, NULL);
   vkDestroyPipeline(view->vlkContext.device, view->pipeline, NULL);
