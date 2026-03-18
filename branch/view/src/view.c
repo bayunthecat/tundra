@@ -1487,7 +1487,7 @@ View* makeView() {
   e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
   e->currentFrame = 0;
   e->start = 0;
-  vlkCreateContex(&e->vlkContext);
+  vlkCreateContext(&e->vlkContext);
   vlkCreateSwapchain(&e->vlkContext, &e->vlkSwapchain);
   createRenderPass(e);
   createDescriptorSetLayout(e);
@@ -1512,13 +1512,6 @@ View* makeView() {
   loadModel(e, "assets/branch_e.obj", &e->eShape, &e->eShapeMemory,
             &e->eShapeVNum);
   return e;
-}
-
-void destroySwapchainImages(View* e) {
-  for (uint32_t i = 0; i < e->vlkSwapchain.swapchainImageCount; i++) {
-    vkDestroyImageView(e->vlkContext.device,
-                       e->vlkSwapchain.swapchainImageViews[i], NULL);
-  }
 }
 
 void destroyColorResources(View* e) {
@@ -1578,14 +1571,9 @@ void destroyShapesBuffers(View* e) {
 }
 
 void freeView(View* view) {
-  vkDestroySwapchainKHR(view->vlkContext.device, view->vlkSwapchain.swapchain,
-                        NULL);
-  destroySwapchainImages(view);
   destroyColorResources(view);
   destroyDepthResources(view);
   destroyFramebuffers(view);
-  vkDestroySurfaceKHR(view->vlkContext.vkInstance, view->vlkSwapchain.surface,
-                      NULL);
   vkDestroyRenderPass(view->vlkContext.device, view->renderPass, NULL);
   vkDestroyPipelineLayout(view->vlkContext.device, view->pipelineLayout, NULL);
   vkDestroyPipeline(view->vlkContext.device, view->pipeline, NULL);
@@ -1610,8 +1598,8 @@ void freeView(View* view) {
   vkDestroyDescriptorPool(view->vlkContext.device, view->descriptorPool, NULL);
   vkDestroyImageView(view->vlkContext.device, view->textureImageView, NULL);
   vkDestroySampler(view->vlkContext.device, view->textureSampler, NULL);
-  vkDestroyDevice(view->vlkContext.device, NULL);
-  vkDestroyInstance(view->vlkContext.vkInstance, NULL);
+  vlkDestroySwapchain(&view->vlkContext, &view->vlkSwapchain);
+  vlkDestroyContext(&view->vlkContext);
   glfwTerminate();
   free(view);
 }

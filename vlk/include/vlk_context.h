@@ -12,6 +12,8 @@ typedef struct VlkContext {
   GLFWwindow* window;
 } VlkContext;
 
-void vlkCreateContex(VlkContext* context);
+void vlkCreateContext(VlkContext* context);
+
+void vlkDestroyContext(VlkContext* context);
 
 #endif  // !GPU_CONTEXT

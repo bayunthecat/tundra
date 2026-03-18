@@ -88,11 +88,16 @@ static void createInstance(VkInstance* instance) {
   printf("instance created: %p\n", instance);
 }
 
-void vlkCreateContex(VlkContext* context) {
+void vlkCreateContext(VlkContext* context) {
   // TODO not a place in a context, as it is a platform dependent code
   createGlfw(&context->window, 800, 600);
   createInstance(&context->vkInstance);
   pickPhysicalDevice(&context->vkInstance, &context->physicalDevice);
   createLogicalDevice(&context->physicalDevice, &context->device);
   vkGetDeviceQueue(context->device, 0, 0, &context->queue);
+}
+
+void vlkDestroyContext(VlkContext* context) {
+  vkDestroyDevice(context->device, NULL);
+  vkDestroyInstance(context->vkInstance, NULL);
 }

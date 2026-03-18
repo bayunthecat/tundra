@@ -1,3 +1,4 @@
+#include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 
@@ -109,4 +110,18 @@ void vlkCreateSwapchain(VlkContext* vlkContext, VlkSwapchain* vlkSwapchain) {
   createSurface(vlkContext, vlkSwapchain);
   createSwapchain(vlkContext, vlkSwapchain);
   createSwapchainImageViews(vlkContext, vlkSwapchain);
+}
+
+static void destroyImageViews(VkDevice device, VkImageView* imageViews,
+                              uint32_t imageCount) {
+  for (uint32_t i = 0; i < imageCount; i++) {
+    vkDestroyImageView(device, imageViews[i], NULL);
+  }
+}
+
+void vlkDestroySwapchain(VlkContext* vlkContext, VlkSwapchain* vlkSwapchain) {
+  destroyImageViews(vlkContext->device, vlkSwapchain->swapchainImageViews,
+                    vlkSwapchain->swapchainImageCount);
+  vkDestroySwapchainKHR(vlkContext->device, vlkSwapchain->swapchain, NULL);
+  vkDestroySurfaceKHR(vlkContext->vkInstance, vlkSwapchain->surface, NULL);
 }

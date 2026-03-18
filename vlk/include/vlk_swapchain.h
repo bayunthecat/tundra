@@ -1,5 +1,6 @@
 #ifndef VLK_SWAPCHAIN
 #define VLK_SWAPCHAIN
+#define VLK_SWAPCHAIN_IMAGE_SLOTS 10
 
 #include <vulkan/vulkan_core.h>
 
@@ -11,10 +12,12 @@ typedef struct VlkSwapchain {
   VkExtent2D swapchainExtent;
   VkSurfaceKHR surface;
   VkSwapchainKHR swapchain;
-  VkImage swapchainImages[10];
-  VkImageView swapchainImageViews[10];
+  VkImage swapchainImages[VLK_SWAPCHAIN_IMAGE_SLOTS];
+  VkImageView swapchainImageViews[VLK_SWAPCHAIN_IMAGE_SLOTS];
 } VlkSwapchain;
 
-void vlkCreateSwapchain(VlkContext* context, VlkSwapchain* vlkSwapchain);
+void vlkCreateSwapchain(VlkContext* vlkContext, VlkSwapchain* vlkSwapchain);
+
+void vlkDestroySwapchain(VlkContext* vlkContext, VlkSwapchain* vlkSwapchain);
 
 #endif  // !VLK_SWAPCHAIN
