@@ -4,16 +4,9 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan_core.h>
 
-typedef struct VlkContext {
-  VkInstance vkInstance;
-  VkPhysicalDevice physicalDevice;
-  VkDevice device;
-  VkQueue queue;
-  GLFWwindow* window;
-} VlkContext;
+void vlkCreateInstance(VkInstance* pInstance);
 
-void vlkCreateContext(VlkContext* context);
-
-void vlkDestroyContext(VlkContext* context);
+void vlkCreateDevice(VkInstance instance, VkPhysicalDevice* pPhysicalDevice,
+                     VkDevice* pLogicalDevice);
 
 #endif  // !GPU_CONTEXT

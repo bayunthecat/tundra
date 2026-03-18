@@ -1,23 +1,21 @@
 #ifndef VLK_SWAPCHAIN
 #define VLK_SWAPCHAIN
-#define VLK_SWAPCHAIN_IMAGE_SLOTS 10
-
+#include <GLFW/glfw3.h>
+#include <stdint.h>
 #include <vulkan/vulkan_core.h>
 
-#include "vlk_context.h"
+void vlkCreateSurface(VkInstance instance, GLFWwindow* window,
+                      VkSurfaceKHR* pSurface);
 
-typedef struct VlkSwapchain {
-  uint32_t swapchainImageCount;
-  VkFormat swapchainImageFormat;
-  VkExtent2D swapchainExtent;
-  VkSurfaceKHR surface;
-  VkSwapchainKHR swapchain;
-  VkImage swapchainImages[VLK_SWAPCHAIN_IMAGE_SLOTS];
-  VkImageView swapchainImageViews[VLK_SWAPCHAIN_IMAGE_SLOTS];
-} VlkSwapchain;
+void vlkCreateSwapchainThin(VkDevice device, VkPhysicalDevice physicalDevice,
+                            VkExtent2D extent, VkFormat format,
+                            VkSurfaceKHR surface, VkSwapchainKHR* pSwapchain);
 
-void vlkCreateSwapchain(VlkContext* vlkContext, VlkSwapchain* vlkSwapchain);
+void vlkGetSwapchainImages(VkDevice device, VkSwapchainKHR swapchain,
+                           uint32_t* pImageCount, VkImage* pImages);
 
-void vlkDestroySwapchain(VlkContext* vlkContext, VlkSwapchain* vlkSwapchain);
+void vlkCreateSwapchainImageViews(VkDevice device, VkFormat format,
+                                  uint32_t imageCount, VkImage* images,
+                                  VkImageView* imageViews);
 
 #endif  // !VLK_SWAPCHAIN

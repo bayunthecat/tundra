@@ -31,6 +31,7 @@
 #include "vlk_context.h"
 #include "vlk_swapchain.h"
 
+#define SWAPCHAIN_IMAGE_SLOTS 10
 #define MAX_FRAMES_IN_FLIGHT 4
 #define ROWS 13
 #define COLS 13
@@ -57,9 +58,29 @@ typedef struct RenderObject {
 } RenderObject;
 
 struct View {
-  VlkContext vlkContext;
+  GLFWwindow* window;
 
-  VlkSwapchain vlkSwapchain;
+  VkInstance instance;
+
+  VkPhysicalDevice physicalDevice;
+
+  VkDevice device;
+
+  VkQueue queue;
+
+  VkExtent2D swapchainExtent;
+
+  VkFormat format;
+
+  VkSurfaceKHR surface;
+
+  VkSwapchainKHR swapchain;
+
+  uint32_t swapchainImageCount;
+
+  VkImage swapchainImages[SWAPCHAIN_IMAGE_SLOTS];
+
+  VkImageView swapchainImageViews[SWAPCHAIN_IMAGE_SLOTS];
 
   int tShapeNum;
 
@@ -123,8 +144,6 @@ struct View {
 
   VkPipelineLayout pipelineLayout;
 
-  uint32_t imageCount;
-
   VkRenderPass renderPass;
 
   VkPipeline pipeline;
@@ -186,6 +205,15 @@ struct View {
   clock_t start;
 };
 
+static void createGlfw(GLFWwindow** window, int width, int height) {
+  glfwInit();
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+  glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+  glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
+  // TODO change Hello vulkan
+  *window = glfwCreateWindow(width, height, "Hello Vulkan", NULL, NULL);
+}
+
 uint32_t findMemoryTypeNew(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
                            VkMemoryPropertyFlags props) {
   VkPhysicalDeviceMemoryProperties memProps = {};
@@ -203,7 +231,7 @@ uint32_t findMemoryTypeNew(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
 uint32_t findMemoryType(View* e, uint32_t typeFilter,
                         VkMemoryPropertyFlags props) {
   VkPhysicalDeviceMemoryProperties memProps = {};
-  vkGetPhysicalDeviceMemoryProperties(e->vlkContext.physicalDevice, &memProps);
+  vkGetPhysicalDeviceMemoryProperties(e->physicalDevice, &memProps);
   for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
     if (typeFilter & (1 << i) &&
         (memProps.memoryTypes[i].propertyFlags & props) == props) {
@@ -237,24 +265,23 @@ void createImage(View* e, uint32_t width, uint32_t height, uint32_t mipLevels,
       .usage = usage,
       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
-  if (vkCreateImage(e->vlkContext.device, &imageInfo, NULL, image) !=
-      VK_SUCCESS) {
+  if (vkCreateImage(e->device, &imageInfo, NULL, image) != VK_SUCCESS) {
     printf("image creation failed\n");
     exit(1);
   }
   VkMemoryRequirements memReq;
-  vkGetImageMemoryRequirements(e->vlkContext.device, *image, &memReq);
+  vkGetImageMemoryRequirements(e->device, *image, &memReq);
   VkMemoryAllocateInfo allocInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .allocationSize = memReq.size,
       .memoryTypeIndex = findMemoryType(e, memReq.memoryTypeBits,
                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
-  if (vkAllocateMemory(e->vlkContext.device, &allocInfo, NULL, imageMemory) !=
+  if (vkAllocateMemory(e->device, &allocInfo, NULL, imageMemory) !=
       VK_SUCCESS) {
     printf("failed to allocate image memory\n");
     exit(1);
   }
-  vkBindImageMemory(e->vlkContext.device, *image, *imageMemory, 0);
+  vkBindImageMemory(e->device, *image, *imageMemory, 0);
 }
 
 VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
@@ -285,7 +312,7 @@ VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
 void createRenderPass(View* e) {
   printf("creating render pass\n");
   VkAttachmentDescription colorAttachment = {
-      .format = e->vlkSwapchain.swapchainImageFormat,
+      .format = e->format,
       .samples = e->msaaSample,
       .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
       .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -305,7 +332,7 @@ void createRenderPass(View* e) {
       .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
   };
   VkAttachmentDescription colorAttachmentResolve = {
-      .format = e->vlkSwapchain.swapchainImageFormat,
+      .format = e->format,
       .samples = VK_SAMPLE_COUNT_1_BIT,
       .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
       .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -356,8 +383,8 @@ void createRenderPass(View* e) {
       .pDependencies = &dependency,
 
   };
-  VkResult result = vkCreateRenderPass(e->vlkContext.device, &renderPassInfo,
-                                       NULL, &e->renderPass);
+  VkResult result =
+      vkCreateRenderPass(e->device, &renderPassInfo, NULL, &e->renderPass);
   if (result != VK_SUCCESS) {
     printf("failed create render pass\n");
     exit(1);
@@ -395,7 +422,7 @@ void createDescriptorSetLayout(View* e) {
       .bindingCount = 3,
       .pBindings = bindings,
   };
-  if (vkCreateDescriptorSetLayout(e->vlkContext.device, &info, NULL,
+  if (vkCreateDescriptorSetLayout(e->device, &info, NULL,
                                   &e->descriptorLayout) != VK_SUCCESS) {
     printf("Unable to create descriptor set layout\n");
     exit(1);
@@ -469,8 +496,7 @@ VkShaderModule createShaderModule(View* e, const char* filepath) {
       .codeSize = size,
   };
   VkShaderModule module;
-  VkResult result =
-      vkCreateShaderModule(e->vlkContext.device, &info, NULL, &module);
+  VkResult result = vkCreateShaderModule(e->device, &info, NULL, &module);
   if (result != VK_SUCCESS) {
     printf("failed to create shader module %s\n", filepath);
     exit(1);
@@ -530,14 +556,14 @@ void createGraphicsPipeline(View* e) {
   VkViewport viewport = {
       .x = 0.0f,
       .y = 0.0f,
-      .width = (float)e->vlkSwapchain.swapchainExtent.width,
-      .height = (float)e->vlkSwapchain.swapchainExtent.height,
+      .width = (float)e->swapchainExtent.width,
+      .height = (float)e->swapchainExtent.height,
       .minDepth = 0.0f,
       .maxDepth = 1.0f,
   };
   VkRect2D scissor = {
       .offset = {0, 0},
-      .extent = e->vlkSwapchain.swapchainExtent,
+      .extent = e->swapchainExtent,
   };
   VkPipelineViewportStateCreateInfo viewportStateInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -589,8 +615,8 @@ void createGraphicsPipeline(View* e) {
       .pushConstantRangeCount = 0,
       .pSetLayouts = &e->descriptorLayout,
   };
-  VkResult result = vkCreatePipelineLayout(
-      e->vlkContext.device, &pipelineLayoutInfo, NULL, &e->pipelineLayout);
+  VkResult result = vkCreatePipelineLayout(e->device, &pipelineLayoutInfo, NULL,
+                                           &e->pipelineLayout);
   if (result != VK_SUCCESS) {
     printf("failed pipeline layout\n");
     exit(1);
@@ -612,15 +638,14 @@ void createGraphicsPipeline(View* e) {
       .basePipelineHandle = VK_NULL_HANDLE,
       .pDepthStencilState = &depthStencilInfo,
   };
-  VkResult pipelineResult =
-      vkCreateGraphicsPipelines(e->vlkContext.device, VK_NULL_HANDLE, 1,
-                                &pipelineInfo, NULL, &e->pipeline);
+  VkResult pipelineResult = vkCreateGraphicsPipelines(
+      e->device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &e->pipeline);
   if (pipelineResult != VK_SUCCESS) {
     printf("failed to create pipeline\n");
     exit(1);
   }
-  vkDestroyShaderModule(e->vlkContext.device, triFrag, NULL);
-  vkDestroyShaderModule(e->vlkContext.device, triVert, NULL);
+  vkDestroyShaderModule(e->device, triFrag, NULL);
+  vkDestroyShaderModule(e->device, triVert, NULL);
 }
 
 void createCommandPool(View* e) {
@@ -631,7 +656,7 @@ void createCommandPool(View* e) {
       .queueFamilyIndex = 0,
   };
   VkResult result =
-      vkCreateCommandPool(e->vlkContext.device, &info, NULL, &e->commandPool);
+      vkCreateCommandPool(e->device, &info, NULL, &e->commandPool);
   if (result != VK_SUCCESS) {
     printf("failed to create command pool");
     exit(1);
@@ -640,58 +665,53 @@ void createCommandPool(View* e) {
 
 void createColorResources(View* e) {
   printf("creating color resources\n");
-  VkFormat colorFormat = e->vlkSwapchain.swapchainImageFormat;
-  createImage(e, e->vlkSwapchain.swapchainExtent.width,
-              e->vlkSwapchain.swapchainExtent.height, 1, e->msaaSample,
-              colorFormat, VK_IMAGE_TILING_OPTIMAL,
+  VkFormat colorFormat = e->format;
+  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
+              e->msaaSample, colorFormat, VK_IMAGE_TILING_OPTIMAL,
               VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
                   VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->colorImage,
               &e->colorImageMemory);
-  e->colorImageView =
-      createImageView(e->vlkContext.device, e->colorImage, colorFormat,
-                      VK_IMAGE_ASPECT_COLOR_BIT, 1);
+  e->colorImageView = createImageView(e->device, e->colorImage, colorFormat,
+                                      VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
 
 void createDepthResources(View* e) {
   printf("creating depth resources\n");
   VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
-  createImage(e, e->vlkSwapchain.swapchainExtent.width,
-              e->vlkSwapchain.swapchainExtent.height, 1, e->msaaSample,
-              depthFormat, VK_IMAGE_TILING_OPTIMAL,
+  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
+              e->msaaSample, depthFormat, VK_IMAGE_TILING_OPTIMAL,
               VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->depthImage,
               &e->depthImageMemory);
-  e->depthImageView =
-      createImageView(e->vlkContext.device, e->depthImage, depthFormat,
-                      VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+  e->depthImageView = createImageView(e->device, e->depthImage, depthFormat,
+                                      VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 }
 
 void createFramebuffers(View* e) {
   printf("creating framebuffers\n");
-  e->framebuffers =
-      malloc(sizeof(VkFramebuffer) * e->vlkSwapchain.swapchainImageCount);
+  e->framebuffers = malloc(sizeof(VkFramebuffer) * e->swapchainImageCount);
   if (e->framebuffers == NULL) {
     printf("malloc failed\n");
     exit(1);
   }
-  for (uint32_t i = 0; i < e->vlkSwapchain.swapchainImageCount; i++) {
+  for (uint32_t i = 0; i < e->swapchainImageCount; i++) {
     VkImageView attachments[] = {
         e->colorImageView,
         e->depthImageView,
-        e->vlkSwapchain.swapchainImageViews[i],
+        e->swapchainImageViews[i],
     };
     VkFramebufferCreateInfo framebufferInfo = {
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass = e->renderPass,
         .attachmentCount = 3,
         .pAttachments = attachments,
-        .width = e->vlkSwapchain.swapchainExtent.width,
-        .height = e->vlkSwapchain.swapchainExtent.height,
+        .width = e->swapchainExtent.width,
+        .height = e->swapchainExtent.height,
         .layers = 1,
     };
-    VkResult result = vkCreateFramebuffer(
-        e->vlkContext.device, &framebufferInfo, NULL, &e->framebuffers[i]);
+    VkResult result = vkCreateFramebuffer(e->device, &framebufferInfo, NULL,
+                                          &e->framebuffers[i]);
     if (result != VK_SUCCESS) {
       printf("failed to create framebuffer");
       exit(1);
@@ -708,25 +728,24 @@ void createBuffer(View* e, VkDeviceSize size, VkBufferUsageFlags usage,
       .usage = usage,
       .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
-  if (vkCreateBuffer(e->vlkContext.device, &info, NULL, buffer) != VK_SUCCESS) {
+  if (vkCreateBuffer(e->device, &info, NULL, buffer) != VK_SUCCESS) {
     printf("error creating buffer\n");
     exit(1);
   }
   printf("creating buffer: %p\n", *buffer);
   VkMemoryRequirements memReq;
-  vkGetBufferMemoryRequirements(e->vlkContext.device, *buffer, &memReq);
+  vkGetBufferMemoryRequirements(e->device, *buffer, &memReq);
 
   VkMemoryAllocateInfo allocInfo = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       .allocationSize = memReq.size,
       .memoryTypeIndex = findMemoryType(e, memReq.memoryTypeBits, props),
   };
-  if (vkAllocateMemory(e->vlkContext.device, &allocInfo, NULL, memory) !=
-      VK_SUCCESS) {
+  if (vkAllocateMemory(e->device, &allocInfo, NULL, memory) != VK_SUCCESS) {
     printf("error allocating memory\n");
     exit(1);
   };
-  vkBindBufferMemory(e->vlkContext.device, *buffer, *memory, 0);
+  vkBindBufferMemory(e->device, *buffer, *memory, 0);
 }
 
 VkCommandBuffer beginSingleTimeCommands(View* e) {
@@ -737,7 +756,7 @@ VkCommandBuffer beginSingleTimeCommands(View* e) {
       .commandBufferCount = 1,
   };
   VkCommandBuffer commandBuffer;
-  vkAllocateCommandBuffers(e->vlkContext.device, &allocInfo, &commandBuffer);
+  vkAllocateCommandBuffers(e->device, &allocInfo, &commandBuffer);
   VkCommandBufferBeginInfo beginInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
@@ -753,9 +772,9 @@ void endSingleTimeCommands(View* e, VkCommandBuffer commandBuffer) {
       .commandBufferCount = 1,
       .pCommandBuffers = &commandBuffer,
   };
-  vkQueueSubmit(e->vlkContext.queue, 1, &submitInfo, VK_NULL_HANDLE);
-  vkQueueWaitIdle(e->vlkContext.queue);
-  vkFreeCommandBuffers(e->vlkContext.device, e->commandPool, 1, &commandBuffer);
+  vkQueueSubmit(e->queue, 1, &submitInfo, VK_NULL_HANDLE);
+  vkQueueWaitIdle(e->queue);
+  vkFreeCommandBuffers(e->device, e->commandPool, 1, &commandBuffer);
 }
 
 void transitionImageLayout(View* e, VkImage image, VkFormat format,
@@ -925,9 +944,9 @@ void createTexture(View* e) {
                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                &stage, &stageMem);
   void* data;
-  vkMapMemory(e->vlkContext.device, stageMem, 0, dSize, 0, &data);
+  vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
   memcpy(data, pixels, dSize);
-  vkUnmapMemory(e->vlkContext.device, stageMem);
+  vkUnmapMemory(e->device, stageMem);
   free(pixels);
 
   createImage(e, texWidth, texHeight, e->mipLevels, VK_SAMPLE_COUNT_1_BIT,
@@ -942,8 +961,8 @@ void createTexture(View* e) {
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
   copyBufferToImage(e, stage, e->textureImage, texWidth, texHeight);
   generateMipmaps(e, e->textureImage, texWidth, texHeight, e->mipLevels);
-  vkDestroyBuffer(e->vlkContext.device, stage, NULL);
-  vkFreeMemory(e->vlkContext.device, stageMem, NULL);
+  vkDestroyBuffer(e->device, stage, NULL);
+  vkFreeMemory(e->device, stageMem, NULL);
 }
 
 void createTextureImage(View* e) {
@@ -960,9 +979,9 @@ void createTextureImage(View* e) {
                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                &stage, &stageMem);
   void* data;
-  vkMapMemory(e->vlkContext.device, stageMem, 0, dSize, 0, &data);
+  vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
   memcpy(data, pixels, dSize);
-  vkUnmapMemory(e->vlkContext.device, stageMem);
+  vkUnmapMemory(e->device, stageMem);
   free(pixels);
 
   createImage(e, texWidth, texHeight, e->mipLevels, VK_SAMPLE_COUNT_1_BIT,
@@ -977,21 +996,21 @@ void createTextureImage(View* e) {
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
   copyBufferToImage(e, stage, e->textureImage, texWidth, texHeight);
   generateMipmaps(e, e->textureImage, texWidth, texHeight, e->mipLevels);
-  vkDestroyBuffer(e->vlkContext.device, stage, NULL);
-  vkFreeMemory(e->vlkContext.device, stageMem, NULL);
+  vkDestroyBuffer(e->device, stage, NULL);
+  vkFreeMemory(e->device, stageMem, NULL);
 }
 
 void createTextureImageView(View* e) {
   printf("creating texture image view\n");
-  e->textureImageView = createImageView(
-      e->vlkContext.device, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
-      VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels);
+  e->textureImageView =
+      createImageView(e->device, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
+                      VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels);
 }
 
 void createTextureSampler(View* e) {
   printf("creating texture sampler\n");
   VkPhysicalDeviceProperties props = {};
-  vkGetPhysicalDeviceProperties(e->vlkContext.physicalDevice, &props);
+  vkGetPhysicalDeviceProperties(e->physicalDevice, &props);
   VkSamplerCreateInfo samplerInfo = {
       .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
       .magFilter = VK_FILTER_LINEAR,
@@ -1010,8 +1029,8 @@ void createTextureSampler(View* e) {
       .maxLod = (float)e->mipLevels,
       .mipLodBias = 0.0f,
   };
-  if (vkCreateSampler(e->vlkContext.device, &samplerInfo, NULL,
-                      &e->textureSampler) != VK_SUCCESS) {
+  if (vkCreateSampler(e->device, &samplerInfo, NULL, &e->textureSampler) !=
+      VK_SUCCESS) {
     printf("error creating sampler\n");
     exit(1);
   }
@@ -1041,8 +1060,8 @@ void createUniformBuffers(View* e) {
                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                  &e->uniformBuffers[i], &e->uniformBuffersMemoryList[i]);
-    vkMapMemory(e->vlkContext.device, e->uniformBuffersMemoryList[i], 0,
-                bufferSize, 0, &e->uniformBuffersMapped[i]);
+    vkMapMemory(e->device, e->uniformBuffersMemoryList[i], 0, bufferSize, 0,
+                &e->uniformBuffersMapped[i]);
   }
 }
 
@@ -1071,8 +1090,8 @@ void createDescriptorPool(View* e) {
       .pPoolSizes = poolSizes,
       .maxSets = MAX_FRAMES_IN_FLIGHT,
   };
-  if (vkCreateDescriptorPool(e->vlkContext.device, &info, NULL,
-                             &e->descriptorPool) != VK_SUCCESS) {
+  if (vkCreateDescriptorPool(e->device, &info, NULL, &e->descriptorPool) !=
+      VK_SUCCESS) {
     printf("failed create descriptor pool\n");
     exit(1);
   };
@@ -1095,8 +1114,8 @@ void createDescriptorSets(View* e, VkBuffer* ssbo, int totalShapes) {
       .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
       .pSetLayouts = layouts,
   };
-  if (vkAllocateDescriptorSets(e->vlkContext.device, &info,
-                               e->descriptorSets) != VK_SUCCESS) {
+  if (vkAllocateDescriptorSets(e->device, &info, e->descriptorSets) !=
+      VK_SUCCESS) {
     printf("Unable to allocate descriptor sets\n");
     exit(1);
   }
@@ -1145,7 +1164,7 @@ void createDescriptorSets(View* e, VkBuffer* ssbo, int totalShapes) {
     };
 
     VkWriteDescriptorSet writes[] = {bufferWrite, samplerWrite, ssboWrite};
-    vkUpdateDescriptorSets(e->vlkContext.device, 3, writes, 0, NULL);
+    vkUpdateDescriptorSets(e->device, 3, writes, 0, NULL);
   }
 }
 
@@ -1162,7 +1181,7 @@ void createCommandBuffers(View* e) {
       .commandBufferCount = MAX_FRAMES_IN_FLIGHT,
   };
   VkResult result =
-      vkAllocateCommandBuffers(e->vlkContext.device, &info, e->commandBuffers);
+      vkAllocateCommandBuffers(e->device, &info, e->commandBuffers);
   if (result != VK_SUCCESS) {
     printf("failed to allocate buffers\n");
     exit(1);
@@ -1197,20 +1216,20 @@ void createSyncObjects(View* e) {
   };
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     printf("creating image available semaphore: %d\n", i);
-    if (vkCreateSemaphore(e->vlkContext.device, &semaphoreInfo, NULL,
+    if (vkCreateSemaphore(e->device, &semaphoreInfo, NULL,
                           &e->imageAvailableSemaphores[i]) != VK_SUCCESS) {
       printf("failed to create semaphore\n");
       exit(1);
     }
     printf("creating render finished semaphore: %d\n", i);
-    if (vkCreateSemaphore(e->vlkContext.device, &semaphoreInfo, NULL,
+    if (vkCreateSemaphore(e->device, &semaphoreInfo, NULL,
                           &e->renderFinishedSemaphores[i]) != VK_SUCCESS) {
       printf("failed to create semaphore");
       exit(1);
     }
     printf("creating in flight fence: %d\n", i);
-    if (vkCreateFence(e->vlkContext.device, &fenceInfo, NULL,
-                      &e->inFlight[i]) != VK_SUCCESS) {
+    if (vkCreateFence(e->device, &fenceInfo, NULL, &e->inFlight[i]) !=
+        VK_SUCCESS) {
       printf("failed to create fence");
       exit(1);
     }
@@ -1226,7 +1245,7 @@ void copyBuffer(View* e, VkBuffer srcBuffer, VkBuffer dstBuffer,
       .commandBufferCount = 1,
   };
   VkCommandBuffer commandBuffer;
-  vkAllocateCommandBuffers(e->vlkContext.device, &allocInfo, &commandBuffer);
+  vkAllocateCommandBuffers(e->device, &allocInfo, &commandBuffer);
   VkCommandBufferBeginInfo beginInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
@@ -1244,9 +1263,9 @@ void copyBuffer(View* e, VkBuffer srcBuffer, VkBuffer dstBuffer,
       .commandBufferCount = 1,
       .pCommandBuffers = &commandBuffer,
   };
-  vkQueueSubmit(e->vlkContext.queue, 1, &submitInfo, VK_NULL_HANDLE);
-  vkQueueWaitIdle(e->vlkContext.queue);
-  vkFreeCommandBuffers(e->vlkContext.device, e->commandPool, 1, &commandBuffer);
+  vkQueueSubmit(e->queue, 1, &submitInfo, VK_NULL_HANDLE);
+  vkQueueWaitIdle(e->queue);
+  vkFreeCommandBuffers(e->device, e->commandPool, 1, &commandBuffer);
 }
 
 void loadFile(void* ctx, const char* filename, const int isMtl,
@@ -1269,16 +1288,16 @@ void createModelBuffer(View* e, VkBuffer* buffer, VkDeviceMemory* memory,
                &stgBuffer, &stgMemory);
 
   void* data;
-  vkMapMemory(e->vlkContext.device, stgMemory, 0, bufferSize, 0, &data);
+  vkMapMemory(e->device, stgMemory, 0, bufferSize, 0, &data);
   memcpy(data, vertices, bufferSize);
-  vkUnmapMemory(e->vlkContext.device, stgMemory);
+  vkUnmapMemory(e->device, stgMemory);
   createBuffer(
       e, bufferSize,
       VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, memory);
   copyBuffer(e, stgBuffer, *buffer, bufferSize);
-  vkDestroyBuffer(e->vlkContext.device, stgBuffer, NULL);
-  vkFreeMemory(e->vlkContext.device, stgMemory, NULL);
+  vkDestroyBuffer(e->device, stgBuffer, NULL);
+  vkFreeMemory(e->device, stgMemory, NULL);
 }
 
 void loadModel(View* e, const char* filename, VkBuffer* buffer,
@@ -1345,8 +1364,8 @@ void updateUniformBuffer(View* e, uint32_t currentImage) {
       .proj = GLM_MAT4_IDENTITY_INIT,
       .resolution =
           {
-              (float)e->vlkSwapchain.swapchainExtent.width,
-              (float)e->vlkSwapchain.swapchainExtent.height,
+              (float)e->swapchainExtent.width,
+              (float)e->swapchainExtent.height,
           },
   };
   vec3 eye = {0.0f, 0.0f, 50.0f};
@@ -1354,8 +1373,7 @@ void updateUniformBuffer(View* e, uint32_t currentImage) {
   vec3 up = {0.0f, 1.0f, 0.0f};
   glm_lookat(eye, center, up, ubo.view);
   glm_perspective(glm_rad(FOV),
-                  e->vlkSwapchain.swapchainExtent.width /
-                      (float)e->vlkSwapchain.swapchainExtent.height,
+                  e->swapchainExtent.width / (float)e->swapchainExtent.height,
                   0.1f, 100.0f, ubo.proj);
   ubo.proj[1][1] *= -1;
   memcpy(e->uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -1390,7 +1408,7 @@ void recordCommandBuffer(View* e, VkCommandBuffer commandBuffer,
       .renderPass = e->renderPass,
       .framebuffer = e->framebuffers[imageIndex],
       .renderArea.offset = {0, 0},
-      .renderArea.extent = e->vlkSwapchain.swapchainExtent,
+      .renderArea.extent = e->swapchainExtent,
       .pClearValues = clears,
       .clearValueCount = 2,
   };
@@ -1401,15 +1419,15 @@ void recordCommandBuffer(View* e, VkCommandBuffer commandBuffer,
   VkViewport viewport = {
       .x = 0.0f,
       .y = 0.0f,
-      .width = e->vlkSwapchain.swapchainExtent.width,
-      .height = e->vlkSwapchain.swapchainExtent.height,
+      .width = e->swapchainExtent.width,
+      .height = e->swapchainExtent.height,
       .minDepth = 0.0f,
       .maxDepth = 1.0f,
   };
   vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
   VkRect2D scissor = {
       .offset = {0, 0},
-      .extent = e->vlkSwapchain.swapchainExtent,
+      .extent = e->swapchainExtent,
   };
   vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
   vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1432,13 +1450,12 @@ void recordCommandBuffer(View* e, VkCommandBuffer commandBuffer,
 }
 
 void drawFrame(View* e) {
-  vkWaitForFences(e->vlkContext.device, 1, &e->inFlight[e->currentFrame],
-                  VK_TRUE, UINT64_MAX);
-  vkResetFences(e->vlkContext.device, 1, &e->inFlight[e->currentFrame]);
+  vkWaitForFences(e->device, 1, &e->inFlight[e->currentFrame], VK_TRUE,
+                  UINT64_MAX);
+  vkResetFences(e->device, 1, &e->inFlight[e->currentFrame]);
 
   uint32_t imageIndex;
-  vkAcquireNextImageKHR(e->vlkContext.device, e->vlkSwapchain.swapchain,
-                        UINT64_MAX,
+  vkAcquireNextImageKHR(e->device, e->swapchain, UINT64_MAX,
                         e->imageAvailableSemaphores[e->currentFrame],
                         VK_NULL_HANDLE, &imageIndex);
 
@@ -1459,8 +1476,8 @@ void drawFrame(View* e) {
       .signalSemaphoreCount = 1,
       .pSignalSemaphores = &e->renderFinishedSemaphores[imageIndex],
   };
-  if (vkQueueSubmit(e->vlkContext.queue, 1, &submitInfo,
-                    e->inFlight[e->currentFrame]) != VK_SUCCESS) {
+  if (vkQueueSubmit(e->queue, 1, &submitInfo, e->inFlight[e->currentFrame]) !=
+      VK_SUCCESS) {
     printf("queue submit failed\n");
     exit(1);
   }
@@ -1469,10 +1486,10 @@ void drawFrame(View* e) {
       .waitSemaphoreCount = 1,
       .pWaitSemaphores = &e->renderFinishedSemaphores[imageIndex],
       .swapchainCount = 1,
-      .pSwapchains = &e->vlkSwapchain.swapchain,
+      .pSwapchains = &e->swapchain,
       .pImageIndices = &imageIndex,
   };
-  VkResult result = vkQueuePresentKHR(e->vlkContext.queue, &presentInfo);
+  VkResult result = vkQueuePresentKHR(e->queue, &presentInfo);
   if (result != VK_SUCCESS) {
     printf("present failed\n");
     exit(1);
@@ -1483,123 +1500,147 @@ void drawFrame(View* e) {
 // TODO mess end
 
 View* makeView() {
-  View* e = malloc(sizeof(View));
-  e->msaaSample = VK_SAMPLE_COUNT_8_BIT;
-  e->currentFrame = 0;
-  e->start = 0;
-  vlkCreateContext(&e->vlkContext);
-  vlkCreateSwapchain(&e->vlkContext, &e->vlkSwapchain);
-  createRenderPass(e);
-  createDescriptorSetLayout(e);
-  createGraphicsPipeline(e);
-  createCommandPool(e);
-  createColorResources(e);
-  createDepthResources(e);
-  createFramebuffers(e);
-  createTextureImage(e);
-  createTextureImageView(e);
-  createTextureSampler(e);
-  createUniformBuffers(e);
-  createDescriptorPool(e);
-  createCommandBuffers(e);
-  createSyncObjects(e);
-  loadModel(e, "assets/branch_t.obj", &e->tShape, &e->tShapeMemory,
-            &e->tShapeVNum);
-  loadModel(e, "assets/branch_l.obj", &e->lShape, &e->lShapeMemory,
-            &e->lShapeVNum);
-  loadModel(e, "assets/branch_i.obj", &e->iShape, &e->iShapeMemory,
-            &e->iShapeVNum);
-  loadModel(e, "assets/branch_e.obj", &e->eShape, &e->eShapeMemory,
-            &e->eShapeVNum);
-  return e;
+  View* v = malloc(sizeof(View));
+  v->msaaSample = VK_SAMPLE_COUNT_8_BIT;
+  v->currentFrame = 0;
+  v->start = 0;
+  v->swapchainExtent = (VkExtent2D){
+      .width = SCREEN_W,
+      .height = SCREEN_H,
+  };
+  v->format = VK_FORMAT_B8G8R8A8_UNORM;
+  createGlfw(&v->window, SCREEN_W, SCREEN_H);
+  vlkCreateInstance(&v->instance);
+  vlkCreateDevice(v->instance, &v->physicalDevice, &v->device);
+  vkGetDeviceQueue(v->device, 0, 0, &v->queue);
+  vlkCreateSurface(v->instance, v->window, &v->surface);
+  vlkCreateSwapchainThin(v->device, v->physicalDevice, v->swapchainExtent,
+                         v->format, v->surface, &v->swapchain);
+  vlkGetSwapchainImages(v->device, v->swapchain, &v->swapchainImageCount,
+                        v->swapchainImages);
+  printf("pre swapchain image views: %d\n", v->swapchainImageCount);
+  vlkCreateSwapchainImageViews(v->device, v->format, v->swapchainImageCount,
+                               v->swapchainImages, v->swapchainImageViews);
+  createRenderPass(v);
+  createDescriptorSetLayout(v);
+  createGraphicsPipeline(v);
+  createCommandPool(v);
+  createColorResources(v);
+  createDepthResources(v);
+  createFramebuffers(v);
+  createTextureImage(v);
+  createTextureImageView(v);
+  createTextureSampler(v);
+  createUniformBuffers(v);
+  createDescriptorPool(v);
+  createCommandBuffers(v);
+  createSyncObjects(v);
+  loadModel(v, "assets/branch_t.obj", &v->tShape, &v->tShapeMemory,
+            &v->tShapeVNum);
+  loadModel(v, "assets/branch_l.obj", &v->lShape, &v->lShapeMemory,
+            &v->lShapeVNum);
+  loadModel(v, "assets/branch_i.obj", &v->iShape, &v->iShapeMemory,
+            &v->iShapeVNum);
+  loadModel(v, "assets/branch_e.obj", &v->eShape, &v->eShapeMemory,
+            &v->eShapeVNum);
+  return v;
 }
 
 void destroyColorResources(View* e) {
-  vkDestroyImageView(e->vlkContext.device, e->colorImageView, NULL);
-  vkDestroyImage(e->vlkContext.device, e->colorImage, NULL);
-  vkFreeMemory(e->vlkContext.device, e->colorImageMemory, NULL);
+  vkDestroyImageView(e->device, e->colorImageView, NULL);
+  vkDestroyImage(e->device, e->colorImage, NULL);
+  vkFreeMemory(e->device, e->colorImageMemory, NULL);
 }
 
 void destroyDepthResources(View* e) {
-  vkDestroyImageView(e->vlkContext.device, e->depthImageView, NULL);
-  vkDestroyImage(e->vlkContext.device, e->depthImage, NULL);
-  vkFreeMemory(e->vlkContext.device, e->depthImageMemory, NULL);
+  vkDestroyImageView(e->device, e->depthImageView, NULL);
+  vkDestroyImage(e->device, e->depthImage, NULL);
+  vkFreeMemory(e->device, e->depthImageMemory, NULL);
 }
 
 void destroyFramebuffers(View* e) {
-  for (uint32_t i = 0; i < e->vlkSwapchain.swapchainImageCount; i++) {
-    vkDestroyFramebuffer(e->vlkContext.device, e->framebuffers[i], NULL);
+  for (uint32_t i = 0; i < e->swapchainImageCount; i++) {
+    vkDestroyFramebuffer(e->device, e->framebuffers[i], NULL);
   }
   free(e->framebuffers);
 }
 
 void destroyBuffers(View* e, VkBuffer* buffers, int numBuffers) {
   for (int i = 0; i < numBuffers; i++) {
-    vkDestroyBuffer(e->vlkContext.device, buffers[i], NULL);
+    vkDestroyBuffer(e->device, buffers[i], NULL);
   }
   free(buffers);
 }
 
 void destroyDeviceMemory(View* e, VkDeviceMemory* memories, int numBuffers) {
   for (int i = 0; i < numBuffers; i++) {
-    vkFreeMemory(e->vlkContext.device, memories[i], NULL);
+    vkFreeMemory(e->device, memories[i], NULL);
   }
   free(memories);
 }
 
 void destroySemaphores(View* e, VkSemaphore* semaphores) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vkDestroySemaphore(e->vlkContext.device, semaphores[i], NULL);
+    vkDestroySemaphore(e->device, semaphores[i], NULL);
   }
 }
 
 void destroyFences(View* e, VkFence* fences) {
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vkDestroyFence(e->vlkContext.device, fences[i], NULL);
+    vkDestroyFence(e->device, fences[i], NULL);
   }
 }
 
 void destroyShapesBuffers(View* e) {
-  vkDestroyBuffer(e->vlkContext.device, e->tShape, NULL);
-  vkFreeMemory(e->vlkContext.device, e->tShapeMemory, NULL);
-  vkDestroyBuffer(e->vlkContext.device, e->iShape, NULL);
-  vkFreeMemory(e->vlkContext.device, e->iShapeMemory, NULL);
-  vkDestroyBuffer(e->vlkContext.device, e->lShape, NULL);
-  vkFreeMemory(e->vlkContext.device, e->lShapeMemory, NULL);
-  vkDestroyBuffer(e->vlkContext.device, e->eShape, NULL);
-  vkFreeMemory(e->vlkContext.device, e->eShapeMemory, NULL);
+  vkDestroyBuffer(e->device, e->tShape, NULL);
+  vkFreeMemory(e->device, e->tShapeMemory, NULL);
+  vkDestroyBuffer(e->device, e->iShape, NULL);
+  vkFreeMemory(e->device, e->iShapeMemory, NULL);
+  vkDestroyBuffer(e->device, e->lShape, NULL);
+  vkFreeMemory(e->device, e->lShapeMemory, NULL);
+  vkDestroyBuffer(e->device, e->eShape, NULL);
+  vkFreeMemory(e->device, e->eShapeMemory, NULL);
+}
+
+static void destroyImageViews(VkDevice device, VkImageView* imageViews,
+                              uint32_t imageCount) {
+  for (uint32_t i = 0; i < imageCount; i++) {
+    vkDestroyImageView(device, imageViews[i], NULL);
+  }
 }
 
 void freeView(View* view) {
   destroyColorResources(view);
   destroyDepthResources(view);
   destroyFramebuffers(view);
-  vkDestroyRenderPass(view->vlkContext.device, view->renderPass, NULL);
-  vkDestroyPipelineLayout(view->vlkContext.device, view->pipelineLayout, NULL);
-  vkDestroyPipeline(view->vlkContext.device, view->pipeline, NULL);
-  vkDestroyDescriptorSetLayout(view->vlkContext.device, view->descriptorLayout,
-                               NULL);
-  vkDestroyCommandPool(view->vlkContext.device, view->commandPool, NULL);
-  vkDestroyBuffer(view->vlkContext.device, view->modelBuffer, NULL);
+  vkDestroyRenderPass(view->device, view->renderPass, NULL);
+  vkDestroyPipelineLayout(view->device, view->pipelineLayout, NULL);
+  vkDestroyPipeline(view->device, view->pipeline, NULL);
+  vkDestroyDescriptorSetLayout(view->device, view->descriptorLayout, NULL);
+  vkDestroyCommandPool(view->device, view->commandPool, NULL);
+  vkDestroyBuffer(view->device, view->modelBuffer, NULL);
   destroyShapesBuffers(view);
-  vkFreeMemory(view->vlkContext.device, view->modelBufferMemory, NULL);
-  vkDestroyBuffer(view->vlkContext.device, view->modelIndiciesBuffer, NULL);
+  vkFreeMemory(view->device, view->modelBufferMemory, NULL);
+  vkDestroyBuffer(view->device, view->modelIndiciesBuffer, NULL);
   destroyBuffers(view, view->uniformBuffers, MAX_FRAMES_IN_FLIGHT);
   destroyDeviceMemory(view, view->uniformBuffersMemoryList,
                       MAX_FRAMES_IN_FLIGHT);
   destroyBuffers(view, view->renderObjectsSsbo, MAX_FRAMES_IN_FLIGHT);
   destroyDeviceMemory(view, view->renderObjectsSsboMemory,
                       MAX_FRAMES_IN_FLIGHT);
-  vkDestroyImage(view->vlkContext.device, view->textureImage, NULL);
+  vkDestroyImage(view->device, view->textureImage, NULL);
   destroySemaphores(view, view->imageAvailableSemaphores);
   destroySemaphores(view, view->renderFinishedSemaphores);
   destroyFences(view, view->inFlight);
-  vkFreeMemory(view->vlkContext.device, view->textureMemory, NULL);
-  vkDestroyDescriptorPool(view->vlkContext.device, view->descriptorPool, NULL);
-  vkDestroyImageView(view->vlkContext.device, view->textureImageView, NULL);
-  vkDestroySampler(view->vlkContext.device, view->textureSampler, NULL);
-  vlkDestroySwapchain(&view->vlkContext, &view->vlkSwapchain);
-  vlkDestroyContext(&view->vlkContext);
+  vkFreeMemory(view->device, view->textureMemory, NULL);
+  vkDestroyDescriptorPool(view->device, view->descriptorPool, NULL);
+  vkDestroyImageView(view->device, view->textureImageView, NULL);
+  vkDestroySampler(view->device, view->textureSampler, NULL);
+  destroyImageViews(view->device, view->swapchainImageViews,
+                    view->swapchainImageCount);
+  vkDestroySwapchainKHR(view->device, view->swapchain, NULL);
+  vkDestroySurfaceKHR(view->instance, view->surface, NULL);
+
   glfwTerminate();
   free(view);
 }
@@ -1620,8 +1661,8 @@ static void createRenderObjectsSSBO(View* e, int totalShapes) {
                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                  &e->renderObjectsSsbo[i], &e->renderObjectsSsboMemory[i]);
-    vkMapMemory(e->vlkContext.device, e->renderObjectsSsboMemory[i], 0,
-                bufferSize, 0, &e->renderObjectsSsboMapped[i]);
+    vkMapMemory(e->device, e->renderObjectsSsboMemory[i], 0, bufferSize, 0,
+                &e->renderObjectsSsboMapped[i]);
   }
   createDescriptorSets(e, e->renderObjectsSsbo, totalShapes);
 }
@@ -1764,9 +1805,9 @@ void run(View* e) {
   Board* brd = boardMake(1758855645, ROWS, COLS);
   mapToRenderObjects(e, brd, ROWS, COLS);
 
-  glfwSetMouseButtonCallback(e->vlkContext.window, mouseCallback);
+  glfwSetMouseButtonCallback(e->window, mouseCallback);
 
-  while (!glfwWindowShouldClose(e->vlkContext.window)) {
+  while (!glfwWindowShouldClose(e->window)) {
     drawFrame(e);
 
     frameCount++;
@@ -1781,8 +1822,8 @@ void run(View* e) {
       lastTime = currentTime;
     }
     glfwPollEvents();
-    glfwSwapBuffers(e->vlkContext.window);
+    glfwSwapBuffers(e->window);
   }
   boardFree(brd);
-  vkDeviceWaitIdle(e->vlkContext.device);
+  vkDeviceWaitIdle(e->device);
 }
