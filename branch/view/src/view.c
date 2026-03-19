@@ -1514,11 +1514,10 @@ View* makeView() {
   vlkCreateDevice(v->instance, &v->physicalDevice, &v->device);
   vkGetDeviceQueue(v->device, 0, 0, &v->queue);
   vlkCreateSurface(v->instance, v->window, &v->surface);
-  vlkCreateSwapchainThin(v->device, v->physicalDevice, v->swapchainExtent,
-                         v->format, v->surface, &v->swapchain);
+  vlkCreateSwapchain(v->device, v->physicalDevice, v->swapchainExtent,
+                     v->format, v->surface, &v->swapchain);
   vlkGetSwapchainImages(v->device, v->swapchain, &v->swapchainImageCount,
                         v->swapchainImages);
-  printf("pre swapchain image views: %d\n", v->swapchainImageCount);
   vlkCreateSwapchainImageViews(v->device, v->format, v->swapchainImageCount,
                                v->swapchainImages, v->swapchainImageViews);
   createRenderPass(v);

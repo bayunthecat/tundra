@@ -51,9 +51,9 @@ void vlkCreateSurface(VkInstance instance, GLFWwindow* window,
   }
 }
 
-void vlkCreateSwapchainThin(VkDevice device, VkPhysicalDevice physicalDevice,
-                            VkExtent2D extent, VkFormat format,
-                            VkSurfaceKHR surface, VkSwapchainKHR* pSwapchain) {
+void vlkCreateSwapchain(VkDevice device, VkPhysicalDevice physicalDevice,
+                        VkExtent2D extent, VkFormat format,
+                        VkSurfaceKHR surface, VkSwapchainKHR* pSwapchain) {
   printf("creating swapchain\n");
   VkSurfaceCapabilitiesKHR caps;
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &caps);

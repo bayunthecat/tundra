@@ -7,9 +7,9 @@
 void vlkCreateSurface(VkInstance instance, GLFWwindow* window,
                       VkSurfaceKHR* pSurface);
 
-void vlkCreateSwapchainThin(VkDevice device, VkPhysicalDevice physicalDevice,
-                            VkExtent2D extent, VkFormat format,
-                            VkSurfaceKHR surface, VkSwapchainKHR* pSwapchain);
+void vlkCreateSwapchain(VkDevice device, VkPhysicalDevice physicalDevice,
+                        VkExtent2D extent, VkFormat format,
+                        VkSurfaceKHR surface, VkSwapchainKHR* pSwapchain);
 
 void vlkGetSwapchainImages(VkDevice device, VkSwapchainKHR swapchain,
                            uint32_t* pImageCount, VkImage* pImages);
