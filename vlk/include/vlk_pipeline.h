@@ -7,4 +7,11 @@ void vlkCreateRenderPass(VkDevice device, VkFormat format,
                          VkSampleCountFlagBits msaaSample,
                          VkRenderPass* renderPass);
 
+void vlkCreateDescriptorSetLayout(VkDevice device,
+                                  VkDescriptorSetLayout* descriptorSetLayout);
+
+void vlkCreatePipelineLayout(VkDevice device,
+                             VkDescriptorSetLayout descriptorSetLayout,
+                             VkPipelineLayout* pipelineLayout);
+
 #endif  // !VLK_PIPELINE

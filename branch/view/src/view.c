@@ -11,6 +11,7 @@
 #include <sys/types.h>
 
 #include "vlk_pipeline.h"
+#include "vlk_resources.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define GLFW_INCLUDE_VULKAN
@@ -168,7 +169,7 @@ struct View {
 
   void** uniformBuffersMapped;
 
-  VkDescriptorSetLayout descriptorLayout;
+  VkDescriptorSetLayout descriptorSetLayout;
 
   VkDescriptorPool descriptorPool;
 
@@ -311,44 +312,6 @@ VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
   return imageView;
 }
 
-void createDescriptorSetLayout(View* e) {
-  printf("creating descriptor set layout\n");
-  VkDescriptorSetLayoutBinding uboLayoutBinding = {
-      .binding = 0,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-  };
-  VkDescriptorSetLayoutBinding samplerLayoutBinding = {
-      .binding = 1,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-      .pImmutableSamplers = NULL,
-      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-  };
-  VkDescriptorSetLayoutBinding ssboLayoutBinding = {
-      .binding = 2,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-  };
-  VkDescriptorSetLayoutBinding bindings[] = {
-      uboLayoutBinding,
-      samplerLayoutBinding,
-      ssboLayoutBinding,
-  };
-  VkDescriptorSetLayoutCreateInfo info = {
-      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-      .bindingCount = 3,
-      .pBindings = bindings,
-  };
-  if (vkCreateDescriptorSetLayout(e->device, &info, NULL,
-                                  &e->descriptorLayout) != VK_SUCCESS) {
-    printf("Unable to create descriptor set layout\n");
-    exit(1);
-  };
-}
-
 VkVertexInputBindingDescription getVertexBindDesc() {
   VkVertexInputBindingDescription desc = {
       .binding = 0,
@@ -388,54 +351,17 @@ VkVertexInputAttributeDescription getTextureAttrDesc() {
   return desc;
 }
 
-void* load(const char* filepath, size_t* size) {
-  FILE* file = fopen(filepath, "rb");
-  if (!file) {
-    fprintf(stderr, "Failed to open file: %s\n", filepath);
-    perror("");
-    exit(1);
-  }
-  fseek(file, 0, SEEK_END);
-  *size = ftell(file);
-  rewind(file);
-  void* content = malloc(*size);
-  if (content == NULL) {
-    printf("malloc failed\n");
-  }
-  fread(content, 1, *size, file);
-  fclose(file);
-  return content;
-}
-
-VkShaderModule createShaderModule(View* e, const char* filepath) {
-  size_t size;
-  uint32_t* code = load(filepath, &size);
-  VkShaderModuleCreateInfo info = {
-      .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      .pCode = code,
-      .codeSize = size,
-  };
-  VkShaderModule module;
-  VkResult result = vkCreateShaderModule(e->device, &info, NULL, &module);
-  if (result != VK_SUCCESS) {
-    printf("failed to create shader module %s\n", filepath);
-    exit(1);
-  }
-  free(code);
-  return module;
-}
-
 void createGraphicsPipeline(View* e) {
-  VkShaderModule triVert =
-      createShaderModule(e, "shaders/compiled/tri.vert.spv");
+  VkShaderModule triVert;
+  vlkCreateShaderModule(e->device, "shaders/compiled/tri.vert.spv", &triVert);
   VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_VERTEX_BIT,
       .module = triVert,
       .pName = "main",
   };
-  VkShaderModule triFrag =
-      createShaderModule(e, "shaders/compiled/tri.frag.spv");
+  VkShaderModule triFrag;
+  vlkCreateShaderModule(e->device, "shaders/compiled/tri.frag.spv", &triFrag);
   VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -533,14 +459,10 @@ void createGraphicsPipeline(View* e) {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount = 1,
       .pushConstantRangeCount = 0,
-      .pSetLayouts = &e->descriptorLayout,
+      .pSetLayouts = &e->descriptorSetLayout,
   };
-  VkResult result = vkCreatePipelineLayout(e->device, &pipelineLayoutInfo, NULL,
-                                           &e->pipelineLayout);
-  if (result != VK_SUCCESS) {
-    printf("failed pipeline layout\n");
-    exit(1);
-  }
+  vlkCreatePipelineLayout(e->device, e->descriptorSetLayout,
+                          &e->pipelineLayout);
   VkGraphicsPipelineCreateInfo pipelineInfo = {
       .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
       .stageCount = 2,
@@ -1021,7 +943,7 @@ void createDescriptorSets(View* e, VkBuffer* ssbo, int totalShapes) {
   printf("creating descriptor sets\n");
   VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    layouts[i] = e->descriptorLayout;
+    layouts[i] = e->descriptorSetLayout;
   }
   e->descriptorSets = malloc(sizeof(VkDescriptorSet) * MAX_FRAMES_IN_FLIGHT);
   if (e->descriptorSets == NULL) {
@@ -1193,7 +1115,7 @@ void loadFile(void* ctx, const char* filename, const int isMtl,
   if (isMtl == 1) {
     return;
   }
-  *data = load(filename, len);
+  *data = vlkLoad(filename, len);
   printf("load file len: %ld\n", *len);
 }
 
@@ -1441,7 +1363,7 @@ View* makeView() {
   vlkCreateSwapchainImageViews(v->device, v->format, v->swapchainImageCount,
                                v->swapchainImages, v->swapchainImageViews);
   vlkCreateRenderPass(v->device, v->format, v->msaaSample, &v->renderPass);
-  createDescriptorSetLayout(v);
+  vlkCreateDescriptorSetLayout(v->device, &v->descriptorSetLayout);
   createGraphicsPipeline(v);
   createCommandPool(v);
   createColorResources(v);
@@ -1535,7 +1457,7 @@ void freeView(View* view) {
   vkDestroyRenderPass(view->device, view->renderPass, NULL);
   vkDestroyPipelineLayout(view->device, view->pipelineLayout, NULL);
   vkDestroyPipeline(view->device, view->pipeline, NULL);
-  vkDestroyDescriptorSetLayout(view->device, view->descriptorLayout, NULL);
+  vkDestroyDescriptorSetLayout(view->device, view->descriptorSetLayout, NULL);
   vkDestroyCommandPool(view->device, view->commandPool, NULL);
   vkDestroyBuffer(view->device, view->modelBuffer, NULL);
   destroyShapesBuffers(view);
