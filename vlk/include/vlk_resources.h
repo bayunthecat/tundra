@@ -8,6 +8,17 @@
 // TODO temporary place for a load
 void* vlkLoad(const char* filepath, size_t* size);
 
+uint32_t vlkFindMemoryTypeNew(VkPhysicalDevice physicalDevice,
+                              uint32_t typeFilter, VkMemoryPropertyFlags props);
+
+// TODO think about further decomposition
+void vlkCreateImage(VkDevice device, VkPhysicalDevice physicalDevice,
+                    uint32_t width, uint32_t height, uint32_t mipLevels,
+                    VkSampleCountFlagBits numSamples, VkFormat format,
+                    VkImageTiling tiling, VkImageUsageFlags usage,
+                    VkMemoryPropertyFlags props, VkImage* image,
+                    VkDeviceMemory* imageMemory);
+
 void vlkCreateShaderModule(VkDevice device, const char* filepath,
                            VkShaderModule* module);
 

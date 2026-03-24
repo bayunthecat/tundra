@@ -4,19 +4,19 @@
 #include <stddef.h>
 
 typedef struct Allocator {
-  void *(*alloc)(struct Allocator *, size_t size);
-  void (*free)(struct Allocator *, void *ptr);
-  void *ctx;
+  void* (*alloc)(struct Allocator*, size_t size);
+  void (*free)(struct Allocator*, void* ptr);
+  void* ctx;
 } Allocator;
 
-Allocator *allocatorArena(size_t size);
+Allocator* allocatorArena(size_t size);
 
-Allocator *allocatorStd();
+Allocator* allocatorStd();
 
-Allocator *allocatorStack(void *buffer, size_t size);
+Allocator* allocatorStack(void* buffer, size_t size);
 
-void *alloc(Allocator *a, size_t size);
+void* alloc(Allocator* a, size_t size);
 
-void dealloc(Allocator *a, void *ptr);
+void dealloc(Allocator* a, void* ptr);
 
-#endif // !ALLOCATOR_H
+#endif  // !ALLOCATOR_H

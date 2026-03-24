@@ -217,20 +217,6 @@ static void createGlfw(GLFWwindow** window, int width, int height) {
   *window = glfwCreateWindow(width, height, "Hello Vulkan", NULL, NULL);
 }
 
-uint32_t findMemoryTypeNew(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
-                           VkMemoryPropertyFlags props) {
-  VkPhysicalDeviceMemoryProperties memProps = {};
-  vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
-  for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-    if (typeFilter & (1 << i) &&
-        (memProps.memoryTypes[i].propertyFlags & props) == props) {
-      return i;
-    }
-  }
-  printf("unable to find suitable memory\n");
-  exit(1);
-}
-
 uint32_t findMemoryType(View* e, uint32_t typeFilter,
                         VkMemoryPropertyFlags props) {
   VkPhysicalDeviceMemoryProperties memProps = {};
@@ -243,48 +229,6 @@ uint32_t findMemoryType(View* e, uint32_t typeFilter,
   }
   printf("unable to find suitable memory\n");
   exit(1);
-}
-
-void createImage(View* e, uint32_t width, uint32_t height, uint32_t mipLevels,
-                 VkSampleCountFlagBits numSamples, VkFormat format,
-                 VkImageTiling tiling, VkImageUsageFlags usage,
-                 VkMemoryPropertyFlags props, VkImage* image,
-                 VkDeviceMemory* imageMemory) {
-  VkImageCreateInfo imageInfo = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-      .imageType = VK_IMAGE_TYPE_2D,
-      .mipLevels = mipLevels,
-      .samples = numSamples,
-      .extent =
-          {
-              .width = width,
-              .height = height,
-              .depth = 1,
-          },
-      .arrayLayers = 1,
-      .format = format,
-      .tiling = tiling,
-      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-      .usage = usage,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-  };
-  if (vkCreateImage(e->device, &imageInfo, NULL, image) != VK_SUCCESS) {
-    printf("image creation failed\n");
-    exit(1);
-  }
-  VkMemoryRequirements memReq;
-  vkGetImageMemoryRequirements(e->device, *image, &memReq);
-  VkMemoryAllocateInfo allocInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .allocationSize = memReq.size,
-      .memoryTypeIndex = findMemoryType(e, memReq.memoryTypeBits,
-                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
-  if (vkAllocateMemory(e->device, &allocInfo, NULL, imageMemory) !=
-      VK_SUCCESS) {
-    printf("failed to allocate image memory\n");
-    exit(1);
-  }
-  vkBindImageMemory(e->device, *image, *imageMemory, 0);
 }
 
 VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
@@ -508,12 +452,13 @@ void createCommandPool(View* e) {
 void createColorResources(View* e) {
   printf("creating color resources\n");
   VkFormat colorFormat = e->format;
-  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
-              e->msaaSample, colorFormat, VK_IMAGE_TILING_OPTIMAL,
-              VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
-                  VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->colorImage,
-              &e->colorImageMemory);
+  vlkCreateImage(e->device, e->physicalDevice, e->swapchainExtent.width,
+                 e->swapchainExtent.height, 1, e->msaaSample, colorFormat,
+                 VK_IMAGE_TILING_OPTIMAL,
+                 VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                     VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->colorImage,
+                 &e->colorImageMemory);
   e->colorImageView = createImageView(e->device, e->colorImage, colorFormat,
                                       VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
@@ -521,11 +466,12 @@ void createColorResources(View* e) {
 void createDepthResources(View* e) {
   printf("creating depth resources\n");
   VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
-  createImage(e, e->swapchainExtent.width, e->swapchainExtent.height, 1,
-              e->msaaSample, depthFormat, VK_IMAGE_TILING_OPTIMAL,
-              VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->depthImage,
-              &e->depthImageMemory);
+  vlkCreateImage(e->device, e->physicalDevice, e->swapchainExtent.width,
+                 e->swapchainExtent.height, 1, e->msaaSample, depthFormat,
+                 VK_IMAGE_TILING_OPTIMAL,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->depthImage,
+                 &e->depthImageMemory);
   e->depthImageView = createImageView(e->device, e->depthImage, depthFormat,
                                       VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 }
@@ -791,13 +737,14 @@ void createTexture(View* e) {
   vkUnmapMemory(e->device, stageMem);
   free(pixels);
 
-  createImage(e, texWidth, texHeight, e->mipLevels, VK_SAMPLE_COUNT_1_BIT,
-              VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
-              VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-              &e->textureImage, &e->textureMemory);
+  vlkCreateImage(
+      e->device, e->physicalDevice, texWidth, texHeight, e->mipLevels,
+      VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+      VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+          VK_IMAGE_USAGE_SAMPLED_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      &e->textureImage, &e->textureMemory);
   transitionImageLayout(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                         VK_IMAGE_LAYOUT_UNDEFINED,
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
@@ -826,13 +773,14 @@ void createTextureImage(View* e) {
   vkUnmapMemory(e->device, stageMem);
   free(pixels);
 
-  createImage(e, texWidth, texHeight, e->mipLevels, VK_SAMPLE_COUNT_1_BIT,
-              VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
-              VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-              &e->textureImage, &e->textureMemory);
+  vlkCreateImage(
+      e->device, e->physicalDevice, texWidth, texHeight, e->mipLevels,
+      VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+      VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+          VK_IMAGE_USAGE_SAMPLED_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+      &e->textureImage, &e->textureMemory);
   transitionImageLayout(e, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                         VK_IMAGE_LAYOUT_UNDEFINED,
                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, e->mipLevels);
