@@ -8,8 +8,8 @@
 // TODO temporary place for a load
 void* vlkLoad(const char* filepath, size_t* size);
 
-uint32_t vlkFindMemoryTypeNew(VkPhysicalDevice physicalDevice,
-                              uint32_t typeFilter, VkMemoryPropertyFlags props);
+uint32_t vlkFindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
+                           VkMemoryPropertyFlags props);
 
 // TODO think about further decomposition
 void vlkCreateImage(VkDevice device, VkPhysicalDevice physicalDevice,
@@ -21,5 +21,10 @@ void vlkCreateImage(VkDevice device, VkPhysicalDevice physicalDevice,
 
 void vlkCreateShaderModule(VkDevice device, const char* filepath,
                            VkShaderModule* module);
+
+void vlkCreateBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
+                     VkDeviceSize size, VkBufferUsageFlags usage,
+                     VkMemoryPropertyFlags props, VkBuffer* buffer,
+                     VkDeviceMemory* memory);
 
 #endif  // !VLK_RESOURCES

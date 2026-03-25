@@ -217,20 +217,6 @@ static void createGlfw(GLFWwindow** window, int width, int height) {
   *window = glfwCreateWindow(width, height, "Hello Vulkan", NULL, NULL);
 }
 
-uint32_t findMemoryType(View* e, uint32_t typeFilter,
-                        VkMemoryPropertyFlags props) {
-  VkPhysicalDeviceMemoryProperties memProps = {};
-  vkGetPhysicalDeviceMemoryProperties(e->physicalDevice, &memProps);
-  for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-    if (typeFilter & (1 << i) &&
-        (memProps.memoryTypes[i].propertyFlags & props) == props) {
-      return i;
-    }
-  }
-  printf("unable to find suitable memory\n");
-  exit(1);
-}
-
 VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
                             VkImageAspectFlags aspectFlags,
                             uint32_t mipLevels) {
@@ -507,35 +493,6 @@ void createFramebuffers(View* e) {
   }
 }
 
-void createBuffer(View* e, VkDeviceSize size, VkBufferUsageFlags usage,
-                  VkMemoryPropertyFlags props, VkBuffer* buffer,
-                  VkDeviceMemory* memory) {
-  VkBufferCreateInfo info = {
-      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-      .size = size,
-      .usage = usage,
-      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-  };
-  if (vkCreateBuffer(e->device, &info, NULL, buffer) != VK_SUCCESS) {
-    printf("error creating buffer\n");
-    exit(1);
-  }
-  printf("creating buffer: %p\n", *buffer);
-  VkMemoryRequirements memReq;
-  vkGetBufferMemoryRequirements(e->device, *buffer, &memReq);
-
-  VkMemoryAllocateInfo allocInfo = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-      .allocationSize = memReq.size,
-      .memoryTypeIndex = findMemoryType(e, memReq.memoryTypeBits, props),
-  };
-  if (vkAllocateMemory(e->device, &allocInfo, NULL, memory) != VK_SUCCESS) {
-    printf("error allocating memory\n");
-    exit(1);
-  };
-  vkBindBufferMemory(e->device, *buffer, *memory, 0);
-}
-
 VkCommandBuffer beginSingleTimeCommands(View* e) {
   VkCommandBufferAllocateInfo allocInfo = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -727,10 +684,11 @@ void createTexture(View* e) {
   VkDeviceSize dSize = texWidth * texHeight * 4;
   VkBuffer stage;
   VkDeviceMemory stageMem;
-  createBuffer(e, dSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-               &stage, &stageMem);
+  vlkCreateBuffer(e->device, e->physicalDevice, dSize,
+                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                  &stage, &stageMem);
   void* data;
   vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
   memcpy(data, pixels, dSize);
@@ -763,10 +721,11 @@ void createTextureImage(View* e) {
   VkDeviceSize dSize = texWidth * texHeight * 4;
   VkBuffer stage;
   VkDeviceMemory stageMem;
-  createBuffer(e, dSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-               &stage, &stageMem);
+  vlkCreateBuffer(e->device, e->physicalDevice, dSize,
+                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                  &stage, &stageMem);
   void* data;
   vkMapMemory(e->device, stageMem, 0, dSize, 0, &data);
   memcpy(data, pixels, dSize);
@@ -846,10 +805,11 @@ void createUniformBuffers(View* e) {
     exit(1);
   }
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    createBuffer(e, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 &e->uniformBuffers[i], &e->uniformBuffersMemoryList[i]);
+    vlkCreateBuffer(e->device, e->physicalDevice, bufferSize,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                    &e->uniformBuffers[i], &e->uniformBuffersMemoryList[i]);
     vkMapMemory(e->device, e->uniformBuffersMemoryList[i], 0, bufferSize, 0,
                 &e->uniformBuffersMapped[i]);
   }
@@ -1072,17 +1032,18 @@ void createModelBuffer(View* e, VkBuffer* buffer, VkDeviceMemory* memory,
   VkBuffer stgBuffer;
   VkDeviceMemory stgMemory;
   VkDeviceSize bufferSize = sizeof(Vertex) * verticesCount;
-  createBuffer(e, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-               &stgBuffer, &stgMemory);
+  vlkCreateBuffer(e->device, e->physicalDevice, bufferSize,
+                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                  &stgBuffer, &stgMemory);
 
   void* data;
   vkMapMemory(e->device, stgMemory, 0, bufferSize, 0, &data);
   memcpy(data, vertices, bufferSize);
   vkUnmapMemory(e->device, stgMemory);
-  createBuffer(
-      e, bufferSize,
+  vlkCreateBuffer(
+      e->device, e->physicalDevice, bufferSize,
       VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, memory);
   copyBuffer(e, stgBuffer, *buffer, bufferSize);
@@ -1446,10 +1407,11 @@ static void createRenderObjectsSSBO(View* e, int totalShapes) {
   }
   VkDeviceSize bufferSize = sizeof(mat4) * totalShapes;
   for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    createBuffer(e, bufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 &e->renderObjectsSsbo[i], &e->renderObjectsSsboMemory[i]);
+    vlkCreateBuffer(e->device, e->physicalDevice, bufferSize,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                    &e->renderObjectsSsbo[i], &e->renderObjectsSsboMemory[i]);
     vkMapMemory(e->device, e->renderObjectsSsboMemory[i], 0, bufferSize, 0,
                 &e->renderObjectsSsboMapped[i]);
   }

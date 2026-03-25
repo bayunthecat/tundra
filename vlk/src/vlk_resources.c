@@ -1,5 +1,6 @@
 #include "vlk_resources.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <vulkan/vulkan_core.h>
@@ -97,4 +98,34 @@ void vlkCreateShaderModule(VkDevice device, const char* filepath,
     exit(1);
   }
   free(code);
+}
+
+void vlkCreateBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
+                     VkDeviceSize size, VkBufferUsageFlags usage,
+                     VkMemoryPropertyFlags props, VkBuffer* buffer,
+                     VkDeviceMemory* memory) {
+  VkBufferCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+      .size = size,
+      .usage = usage,
+      .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+  if (vkCreateBuffer(device, &info, NULL, buffer) != VK_SUCCESS) {
+    printf("error creating buffer\n");
+    exit(1);
+  }
+  printf("creating buffer: %p\n", *buffer);
+  VkMemoryRequirements memReq;
+  vkGetBufferMemoryRequirements(device, *buffer, &memReq);
+  VkMemoryAllocateInfo allocInfo = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = memReq.size,
+      .memoryTypeIndex =
+          vlkFindMemoryType(physicalDevice, memReq.memoryTypeBits, props),
+  };
+  if (vkAllocateMemory(device, &allocInfo, NULL, memory) != VK_SUCCESS) {
+    printf("error allocating memory\n");
+    exit(1);
+  };
+  vkBindBufferMemory(device, *buffer, *memory, 0);
 }
