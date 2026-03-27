@@ -19,6 +19,10 @@ void vlkCreateImage(VkDevice device, VkPhysicalDevice physicalDevice,
                     VkMemoryPropertyFlags props, VkImage* image,
                     VkDeviceMemory* imageMemory);
 
+void vlkCreateImageView(VkDevice device, VkImage image, VkFormat format,
+                        VkImageAspectFlags aspectFlags, uint32_t mipLevels,
+                        VkImageView* imageView);
+
 void vlkCreateShaderModule(VkDevice device, const char* filepath,
                            VkShaderModule* module);
 

@@ -54,12 +54,6 @@ typedef struct Vertex {
   vec2 texture;
 } Vertex;
 
-typedef struct RenderObject {
-  mat4* model;
-  enum TileType type;
-  double degree;
-} RenderObject;
-
 struct View {
   GLFWwindow* window;
 
@@ -94,8 +88,6 @@ struct View {
   int eShapeNum;
 
   int numRenderObjects;
-
-  RenderObject* renderObjects;
 
   mat4* models;
 
@@ -157,11 +149,11 @@ struct View {
 
   VkCommandBuffer* commandBuffers;
 
-  VkSemaphore* imageAvailableSemaphores;
+  VkSemaphore imageAvailableSemaphores[SWAPCHAIN_IMAGE_SLOTS];
 
-  VkSemaphore* renderFinishedSemaphores;
+  VkSemaphore renderFinishedSemaphores[SWAPCHAIN_IMAGE_SLOTS];
 
-  VkFence* inFlight;
+  VkFence inFlight[SWAPCHAIN_IMAGE_SLOTS];
 
   VkBuffer* uniformBuffers;
 
@@ -215,31 +207,6 @@ static void createGlfw(GLFWwindow** window, int width, int height) {
   glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
   // TODO change Hello vulkan
   *window = glfwCreateWindow(width, height, "Hello Vulkan", NULL, NULL);
-}
-
-VkImageView createImageView(VkDevice device, VkImage image, VkFormat format,
-                            VkImageAspectFlags aspectFlags,
-                            uint32_t mipLevels) {
-  VkImageViewCreateInfo info = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = image,
-      .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = format,
-      .subresourceRange =
-          {
-              .aspectMask = aspectFlags,
-              .baseMipLevel = 0,
-              .levelCount = mipLevels,
-              .baseArrayLayer = 0,
-              .layerCount = 1,
-          },
-  };
-  VkImageView imageView;
-  if (vkCreateImageView(device, &info, NULL, &imageView) != VK_SUCCESS) {
-    printf("failed to create image view\n");
-    exit(1);
-  }
-  return imageView;
 }
 
 VkVertexInputBindingDescription getVertexBindDesc() {
@@ -445,8 +412,8 @@ void createColorResources(View* e) {
                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->colorImage,
                  &e->colorImageMemory);
-  e->colorImageView = createImageView(e->device, e->colorImage, colorFormat,
-                                      VK_IMAGE_ASPECT_COLOR_BIT, 1);
+  vlkCreateImageView(e->device, e->colorImage, colorFormat,
+                     VK_IMAGE_ASPECT_COLOR_BIT, 1, &e->colorImageView);
 }
 
 void createDepthResources(View* e) {
@@ -458,8 +425,8 @@ void createDepthResources(View* e) {
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &e->depthImage,
                  &e->depthImageMemory);
-  e->depthImageView = createImageView(e->device, e->depthImage, depthFormat,
-                                      VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+  vlkCreateImageView(e->device, e->depthImage, depthFormat,
+                     VK_IMAGE_ASPECT_DEPTH_BIT, 1, &e->depthImageView);
 }
 
 void createFramebuffers(View* e) {
@@ -751,9 +718,9 @@ void createTextureImage(View* e) {
 
 void createTextureImageView(View* e) {
   printf("creating texture image view\n");
-  e->textureImageView =
-      createImageView(e->device, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
-                      VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels);
+  vlkCreateImageView(e->device, e->textureImage, VK_FORMAT_R8G8B8A8_SRGB,
+                     VK_IMAGE_ASPECT_COLOR_BIT, e->mipLevels,
+                     &e->textureImageView);
 }
 
 void createTextureSampler(View* e) {
@@ -940,23 +907,6 @@ void createCommandBuffers(View* e) {
 
 void createSyncObjects(View* e) {
   printf("creating sync objects\n");
-  e->imageAvailableSemaphores =
-      malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
-  if (e->imageAvailableSemaphores == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  e->renderFinishedSemaphores =
-      malloc(sizeof(VkSemaphore) * MAX_FRAMES_IN_FLIGHT);
-  if (e->renderFinishedSemaphores == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  e->inFlight = malloc(sizeof(VkFence) * MAX_FRAMES_IN_FLIGHT);
-  if (e->inFlight == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
   VkSemaphoreCreateInfo semaphoreInfo = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
   };
@@ -1463,11 +1413,6 @@ static void mapToRenderObjects(View* v, Board* brd, int rows, int cols) {
     printf("malloc failed\n");
     exit(1);
   }
-  v->renderObjects = malloc(sizeof(RenderObject) * (ROWS * COLS));
-  if (v->renderObjects == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
   int cumulativeOffset = 0;
   int tShapeOffset = cumulativeOffset;
   cumulativeOffset += tShapes;
@@ -1491,8 +1436,6 @@ static void mapToRenderObjects(View* v, Board* brd, int rows, int cols) {
       glm_rotate(template, glm_rad(degree), (vec3){0.0f, 1.0f, 0.0f});
       enum TileType t = boardTileTypeAt(brd, i, j);
       int offset = 0;
-      v->renderObjects[counter].type = t;
-      v->renderObjects[counter].degree = degree;
       if (t == NONE) {
         counter++;
         continue;
@@ -1510,7 +1453,6 @@ static void mapToRenderObjects(View* v, Board* brd, int rows, int cols) {
         offset = eShapeOffset++;
       }
       memcpy(v->models[offset], template, sizeof(mat4));
-      v->renderObjects[counter].model = &v->models[offset];
       currentShape++;
       counter++;
     }

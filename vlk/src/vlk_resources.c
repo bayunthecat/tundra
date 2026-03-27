@@ -82,6 +82,29 @@ void vlkCreateImage(VkDevice device, VkPhysicalDevice physicalDevice,
   vkBindImageMemory(device, *image, *imageMemory, 0);
 }
 
+void vlkCreateImageView(VkDevice device, VkImage image, VkFormat format,
+                        VkImageAspectFlags aspectFlags, uint32_t mipLevels,
+                        VkImageView* imageView) {
+  VkImageViewCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+      .image = image,
+      .viewType = VK_IMAGE_VIEW_TYPE_2D,
+      .format = format,
+      .subresourceRange =
+          {
+              .aspectMask = aspectFlags,
+              .baseMipLevel = 0,
+              .levelCount = mipLevels,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+          },
+  };
+  if (vkCreateImageView(device, &info, NULL, imageView) != VK_SUCCESS) {
+    printf("failed to create image view\n");
+    exit(1);
+  }
+}
+
 void vlkCreateShaderModule(VkDevice device, const char* filepath,
                            VkShaderModule* module) {
   printf("creating a shader module: %s\n", filepath);
