@@ -91,9 +91,9 @@ struct View {
 
   mat4* models;
 
-  VkBuffer* renderObjectsSsbo;
+  VkBuffer renderObjectsSsbo[SWAPCHAIN_IMAGE_SLOTS];
 
-  VkDeviceMemory* renderObjectsSsboMemory;
+  VkDeviceMemory renderObjectsSsboMemory[SWAPCHAIN_IMAGE_SLOTS];
 
   void** renderObjectsSsboMapped;
 
@@ -143,7 +143,7 @@ struct View {
 
   VkPipeline pipeline;
 
-  VkFramebuffer* framebuffers;
+  VkFramebuffer framebuffers[SWAPCHAIN_IMAGE_SLOTS];
 
   VkCommandPool commandPool;
 
@@ -155,9 +155,9 @@ struct View {
 
   VkFence inFlight[SWAPCHAIN_IMAGE_SLOTS];
 
-  VkBuffer* uniformBuffers;
+  VkBuffer uniformBuffers[SWAPCHAIN_IMAGE_SLOTS];
 
-  VkDeviceMemory* uniformBuffersMemoryList;
+  VkDeviceMemory uniformBuffersMemoryList[SWAPCHAIN_IMAGE_SLOTS];
 
   void** uniformBuffersMapped;
 
@@ -431,11 +431,6 @@ void createDepthResources(View* e) {
 
 void createFramebuffers(View* e) {
   printf("creating framebuffers\n");
-  e->framebuffers = malloc(sizeof(VkFramebuffer) * e->swapchainImageCount);
-  if (e->framebuffers == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
   for (uint32_t i = 0; i < e->swapchainImageCount; i++) {
     VkImageView attachments[] = {
         e->colorImageView,
@@ -755,17 +750,6 @@ void createTextureSampler(View* e) {
 void createUniformBuffers(View* e) {
   printf("creating uniform buffers\n");
   VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-  e->uniformBuffers = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
-  if (e->uniformBuffers == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
-  e->uniformBuffersMemoryList =
-      malloc(sizeof(VkDeviceMemory) * MAX_FRAMES_IN_FLIGHT);
-  if (e->uniformBuffersMemoryList == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
   e->uniformBuffersMapped = malloc(sizeof(void*) * MAX_FRAMES_IN_FLIGHT);
   if (e->uniformBuffersMapped == NULL) {
     printf("malloc failed\n");
@@ -1262,21 +1246,18 @@ void destroyFramebuffers(View* e) {
   for (uint32_t i = 0; i < e->swapchainImageCount; i++) {
     vkDestroyFramebuffer(e->device, e->framebuffers[i], NULL);
   }
-  free(e->framebuffers);
 }
 
 void destroyBuffers(View* e, VkBuffer* buffers, int numBuffers) {
   for (int i = 0; i < numBuffers; i++) {
     vkDestroyBuffer(e->device, buffers[i], NULL);
   }
-  free(buffers);
 }
 
 void destroyDeviceMemory(View* e, VkDeviceMemory* memories, int numBuffers) {
   for (int i = 0; i < numBuffers; i++) {
     vkFreeMemory(e->device, memories[i], NULL);
   }
-  free(memories);
 }
 
 void destroySemaphores(View* e, VkSemaphore* semaphores) {
@@ -1346,12 +1327,8 @@ void freeView(View* view) {
 }
 
 static void createRenderObjectsSSBO(View* e, int totalShapes) {
-  e->renderObjectsSsbo = malloc(sizeof(VkBuffer) * MAX_FRAMES_IN_FLIGHT);
-  e->renderObjectsSsboMemory =
-      malloc(sizeof(VkDeviceMemory) * MAX_FRAMES_IN_FLIGHT);
   e->renderObjectsSsboMapped = malloc(sizeof(void*) * MAX_FRAMES_IN_FLIGHT);
-  if (e->renderObjectsSsboMapped == NULL || e->renderObjectsSsbo == NULL ||
-      e->renderObjectsSsboMemory == NULL) {
+  if (e->renderObjectsSsboMapped == NULL) {
     printf("malloc failed\n");
     exit(1);
   }
