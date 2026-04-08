@@ -147,7 +147,7 @@ struct View {
 
   VkCommandPool commandPool;
 
-  VkCommandBuffer* commandBuffers;
+  VkCommandBuffer commandBuffers[SWAPCHAIN_IMAGE_SLOTS];
 
   VkSemaphore imageAvailableSemaphores[SWAPCHAIN_IMAGE_SLOTS];
 
@@ -165,7 +165,7 @@ struct View {
 
   VkDescriptorPool descriptorPool;
 
-  VkDescriptorSet* descriptorSets;
+  VkDescriptorSet descriptorSets[SWAPCHAIN_IMAGE_SLOTS];
 
   uint32_t currentFrame;
 
@@ -173,17 +173,9 @@ struct View {
 
   VkDeviceMemory modelBufferMemory;
 
-  Vertex* modelVertices;
-
-  int modelVerticesNum;
-
   vec2* texCoords;
 
   uint32_t numTexCoords;
-
-  uint32_t* modelIndices;
-
-  uint32_t modelIndicesNum;
 
   VkBuffer modelIndiciesBuffer;
 
@@ -804,11 +796,6 @@ void createDescriptorSets(View* e, VkBuffer* ssbo, int totalShapes) {
   for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     layouts[i] = e->descriptorSetLayout;
   }
-  e->descriptorSets = malloc(sizeof(VkDescriptorSet) * MAX_FRAMES_IN_FLIGHT);
-  if (e->descriptorSets == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
   VkDescriptorSetAllocateInfo info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
       .descriptorPool = e->descriptorPool,
@@ -870,11 +857,6 @@ void createDescriptorSets(View* e, VkBuffer* ssbo, int totalShapes) {
 }
 
 void createCommandBuffers(View* e) {
-  e->commandBuffers = malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkCommandBuffer));
-  if (e->commandBuffers == NULL) {
-    printf("malloc failed\n");
-    exit(1);
-  }
   VkCommandBufferAllocateInfo info = {
       .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
       .commandPool = e->commandPool,
