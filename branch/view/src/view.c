@@ -169,10 +169,6 @@ struct View {
 
   uint32_t currentFrame;
 
-  VkBuffer modelBuffer;
-
-  VkDeviceMemory modelBufferMemory;
-
   vec2* texCoords;
 
   uint32_t numTexCoords;
@@ -197,7 +193,6 @@ static void createGlfw(GLFWwindow** window, int width, int height) {
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
   glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-  // TODO change Hello vulkan
   *window = glfwCreateWindow(width, height, "Hello Vulkan", NULL, NULL);
 }
 
@@ -1281,13 +1276,12 @@ void freeView(View* view) {
   vkDestroyPipeline(view->device, view->pipeline, NULL);
   vkDestroyDescriptorSetLayout(view->device, view->descriptorSetLayout, NULL);
   vkDestroyCommandPool(view->device, view->commandPool, NULL);
-  vkDestroyBuffer(view->device, view->modelBuffer, NULL);
   destroyShapesBuffers(view);
-  vkFreeMemory(view->device, view->modelBufferMemory, NULL);
-  vkDestroyBuffer(view->device, view->modelIndiciesBuffer, NULL);
+  free(view->uniformBuffersMapped);
   destroyBuffers(view, view->uniformBuffers, MAX_FRAMES_IN_FLIGHT);
   destroyDeviceMemory(view, view->uniformBuffersMemoryList,
                       MAX_FRAMES_IN_FLIGHT);
+  free(view->renderObjectsSsboMapped);
   destroyBuffers(view, view->renderObjectsSsbo, MAX_FRAMES_IN_FLIGHT);
   destroyDeviceMemory(view, view->renderObjectsSsboMemory,
                       MAX_FRAMES_IN_FLIGHT);
@@ -1304,6 +1298,7 @@ void freeView(View* view) {
   vkDestroySwapchainKHR(view->device, view->swapchain, NULL);
   vkDestroySurfaceKHR(view->instance, view->surface, NULL);
 
+  glfwDestroyWindow(view->window);
   glfwTerminate();
   free(view);
 }
