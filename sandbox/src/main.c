@@ -1,8 +1,11 @@
-#include "sandbox.h"
+#include <GLFW/glfw3.h>
+#include <stddef.h>
+#include <stdlib.h>
 
 int main() {
-  Sandbox* e = makeEngine();
-  run(e);
-  freeEngine(e);
-  return 0;
+  int* i = malloc(sizeof(int));
+  glfwInit();
+  GLFWwindow* window = glfwCreateWindow(800, 600, "test", NULL, NULL);
+  glfwDestroyWindow(window);
+  glfwTerminate();
 }

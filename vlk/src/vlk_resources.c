@@ -25,6 +25,20 @@ void* vlkLoad(const char* filepath, size_t* size) {
   return content;
 }
 
+void vlkLoadStack(const char* filepath, size_t* size, void* buffer) {
+  FILE* file = fopen(filepath, "rb");
+  if (!file) {
+    fprintf(stderr, "Failed to open file: %s\n", filepath);
+    perror("");
+    exit(1);
+  }
+  fseek(file, 0, SEEK_END);
+  *size = ftell(file);
+  rewind(file);
+  fread(buffer, 1, *size, file);
+  fclose(file);
+}
+
 uint32_t vlkFindMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter,
                            VkMemoryPropertyFlags props) {
   VkPhysicalDeviceMemoryProperties memProps = {};

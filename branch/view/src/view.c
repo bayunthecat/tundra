@@ -965,6 +965,7 @@ void createModelBuffer(View* e, VkBuffer* buffer, VkDeviceMemory* memory,
 void loadModel(View* e, const char* filename, VkBuffer* buffer,
                VkDeviceMemory* memory, int* numVertices) {
   printf("loading model: %s\n", filename);
+  // uint8_t buffer[1024];
   tinyobj_attrib_t attrib;
   tinyobj_shape_t* shapes;
   tinyobj_material_t* materials;
@@ -1418,19 +1419,6 @@ static void mapToRenderObjects(View* v, Board* brd, int rows, int cols) {
     memcpy(v->renderObjectsSsboMapped[i], v->models,
            sizeof(mat4) * totalShapes);
   }
-}
-
-int instersectAt(vec3 plane, vec3 normal, vec3 origin, vec3 dir, vec3 at) {
-  float denom = glm_vec3_dot(normal, dir);
-  if (fabs(denom) < 0.000001) {
-    return 1;
-  }
-  vec3 diff;
-  glm_vec3_sub(plane, origin, diff);
-  float t = glm_vec3_dot(diff, normal) / denom;
-  glm_vec3_scale(dir, t, at);
-  glm_vec3_add(origin, at, at);
-  return 0;
 }
 
 static void mouseCallback(GLFWwindow* window, int button, int action,
