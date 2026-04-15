@@ -3,3 +3,4 @@ gcc -g -Ivksandbox/include -Istb/image -Itinyobj vksandbox/src/sandbox.c sandbox
 gcc -g -fsanitize=address -Ibranch/view/include -Istb/image -Itinyobj -Ibranch/model/include -Icollections/squeue/include collections/squeue/src/squeue.c -Ivlk/include branch/model/src/board.c branch/view/src/view.c branch/app/src/app.c vlk/src/vlk_context.c vlk/src/vlk_swapchain.c vlk/src/vlk_pipeline.c vlk/src/vlk_resources.c -lvulkan -lglfw -lm -lcglm -o branchapp
 
 gcc -g -Ibranch/view/include -Istb/image -Itinyobj -Ibranch/model/include -Icollections/squeue/include collections/squeue/src/squeue.c -Ivlk/include branch/model/src/board.c branch/view/src/view.c branch/app/src/app.c vlk/src/vlk_context.c vlk/src/vlk_swapchain.c vlk/src/vlk_pipeline.c vlk/src/vlk_resources.c -lvulkan -lglfw -lm -lcglm -o branchapp
+gcc -Ivlk/include vksandbox/src/main.c vlk/src/vlk_context.c vlk/src/vlk_pipeline.c vlk/src/vlk_resources.c vlk/src/vlk_swapchain.c -lvulkan -lglfw -o snd
