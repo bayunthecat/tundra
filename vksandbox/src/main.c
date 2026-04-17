@@ -7,11 +7,14 @@
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
-#include "vlk_context.h"
 #include "vlk_resources.h"
 #include "vlk_swapchain.h"
 
 #define SW_SLOTS 10
+
+typedef struct {
+  int currentFrame;
+} Render;
 
 typedef struct {
   VkInstance instance;
@@ -27,6 +30,11 @@ typedef struct {
   VkPipelineLayout pipelineLayout;
   VkDescriptorSetLayout descriptorSetLayout;
   VkPipeline pipeline;
+  VkCommandPool commandPool;
+  VkCommandBuffer commandBuffers[SW_SLOTS];
+  VkSemaphore imageAvailableSemaphores[SW_SLOTS];
+  VkSemaphore renderFinishedSemaphores[SW_SLOTS];
+  VkFence inFlightFences[SW_SLOTS];
 } Vlk;
 
 void createInstance(Vlk* vlk) {
@@ -107,33 +115,10 @@ void createLogicalDevice(Vlk* vlk) {
 void createDescriptorSetLayout(VkDevice device,
                                VkDescriptorSetLayout* descriptorSetLayout) {
   printf("creating descriptor set layout\n");
-  VkDescriptorSetLayoutBinding uboLayoutBinding = {
-      .binding = 0,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-  };
-  VkDescriptorSetLayoutBinding samplerLayoutBinding = {
-      .binding = 1,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-      .pImmutableSamplers = NULL,
-      .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-  };
-  VkDescriptorSetLayoutBinding ssboLayoutBinding = {
-      .binding = 2,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-  };
-  VkDescriptorSetLayoutBinding bindings[] = {
-      uboLayoutBinding,
-      samplerLayoutBinding,
-      ssboLayoutBinding,
-  };
+  VkDescriptorSetLayoutBinding bindings[] = {};
   VkDescriptorSetLayoutCreateInfo info = {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-      .bindingCount = 3,
+      .bindingCount = 0,
       .pBindings = bindings,
   };
   if (vkCreateDescriptorSetLayout(device, &info, NULL, descriptorSetLayout) !=
@@ -144,6 +129,7 @@ void createDescriptorSetLayout(VkDevice device,
 }
 
 void createGraphicsPipeline(Vlk* vlk) {
+  createDescriptorSetLayout(vlk->device, &vlk->descriptorSetLayout);
   VkShaderModule sandboxVert;
   vlkCreateShaderModule(
       vlk->device, "vksandbox/shaders/compiled/sandbox.vert.spv", &sandboxVert);
@@ -260,11 +246,17 @@ void createGraphicsPipeline(Vlk* vlk) {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
       .setLayoutCount = 1,
       .pushConstantRangeCount = 0,
-      // TODO layouts are not created
       .pSetLayouts = &vlk->descriptorSetLayout,
   };
   vkCreatePipelineLayout(vlk->device, &pipelineLayoutInfo, NULL,
                          &vlk->pipelineLayout);
+  VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+      .pNext = VK_NULL_HANDLE,
+      .colorAttachmentCount = 1,
+      .pColorAttachmentFormats = &vlk->format,
+      .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
+  };
   VkGraphicsPipelineCreateInfo pipelineInfo = {
       .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
       .stageCount = 2,
@@ -281,6 +273,7 @@ void createGraphicsPipeline(Vlk* vlk) {
       .subpass = 0,
       .basePipelineHandle = VK_NULL_HANDLE,
       .pDepthStencilState = &depthStencilInfo,
+      .pNext = &pipelineRenderingCreateInfo,
   };
   VkResult pipelineResult = vkCreateGraphicsPipelines(
       vlk->device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &vlk->pipeline);
@@ -290,6 +283,58 @@ void createGraphicsPipeline(Vlk* vlk) {
   }
   vkDestroyShaderModule(vlk->device, sandboxFrag, NULL);
   vkDestroyShaderModule(vlk->device, sandboxVert, NULL);
+  printf("created graphics pipeline: %p\n", vlk->pipeline);
+}
+
+void createCommandPool(VkDevice device, VkCommandPool* pCommandPool) {
+  VkCommandPoolCreateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .pNext = NULL,
+      .queueFamilyIndex = 0,
+      .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+  };
+  vkCreateCommandPool(device, &info, NULL, pCommandPool);
+}
+
+void createCommandBuffers(VkDevice device, VkCommandPool commandPool, int count,
+                          VkCommandBuffer* commandBuffers) {
+  printf("creating command buffers\n");
+  VkCommandBufferAllocateInfo info = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandPool = commandPool,
+      .commandBufferCount = count,
+  };
+  vkAllocateCommandBuffers(device, &info, commandBuffers);
+}
+
+void createSyncObjects(VkDevice device, int count,
+                       VkSemaphore* imageAvailableSemaphores,
+                       VkSemaphore* renderFinishedSemaphores,
+                       VkFence* inFlight) {
+  VkSemaphoreCreateInfo semaphoreInfo = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+  };
+  VkFenceCreateInfo fenceInfo = {
+      .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+      .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+  };
+  for (uint32_t i = 0; i < count; i++) {
+    if (vkCreateSemaphore(device, &semaphoreInfo, NULL,
+                          &imageAvailableSemaphores[i]) != VK_SUCCESS) {
+      printf("failed to create semaphore\n");
+      exit(1);
+    }
+    if (vkCreateSemaphore(device, &semaphoreInfo, NULL,
+                          &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+      printf("failed to create semaphore");
+      exit(1);
+    }
+    if (vkCreateFence(device, &fenceInfo, NULL, &inFlight[i]) != VK_SUCCESS) {
+      printf("failed to create fence");
+      exit(1);
+    }
+  }
 }
 
 void vlkInit(Vlk* vlk, GLFWwindow* window) {
@@ -305,18 +350,101 @@ void vlkInit(Vlk* vlk, GLFWwindow* window) {
                                vlk->swapchainImageCount, vlk->swapchainImages,
                                vlk->swapchainImageViews);
   createGraphicsPipeline(vlk);
+  createCommandPool(vlk->device, &vlk->commandPool);
+  createCommandBuffers(vlk->device, vlk->commandPool, vlk->swapchainImageCount,
+                       vlk->commandBuffers);
+  createSyncObjects(vlk->device, vlk->swapchainImageCount,
+                    vlk->imageAvailableSemaphores,
+                    vlk->renderFinishedSemaphores, vlk->inFlightFences);
+}
+
+void destroySemaphores(VkDevice device, int count, VkSemaphore* semaphores) {
+  for (int i = 0; i < count; i++) {
+    vkDestroySemaphore(device, semaphores[i], NULL);
+  }
+}
+
+void destroyFences(VkDevice device, int count, VkFence* fences) {
+  for (int i = 0; i < count; i++) {
+    vkDestroyFence(device, fences[i], NULL);
+  }
 }
 
 void vlkDestroy(Vlk* vlk) {
   for (int i = 0; i < vlk->swapchainImageCount; i++) {
     vkDestroyImageView(vlk->device, vlk->swapchainImageViews[i], NULL);
   }
+  destroySemaphores(vlk->device, vlk->swapchainImageCount,
+                    vlk->imageAvailableSemaphores);
+  destroySemaphores(vlk->device, vlk->swapchainImageCount,
+                    vlk->renderFinishedSemaphores);
+  destroyFences(vlk->device, vlk->swapchainImageCount, vlk->inFlightFences);
+  vkDestroyCommandPool(vlk->device, vlk->commandPool, NULL);
+  vkDestroyDescriptorSetLayout(vlk->device, vlk->descriptorSetLayout, NULL);
   vkDestroyPipeline(vlk->device, vlk->pipeline, NULL);
   vkDestroyPipelineLayout(vlk->device, vlk->pipelineLayout, NULL);
   vkDestroySwapchainKHR(vlk->device, vlk->swapchain, NULL);
   vkDestroySurfaceKHR(vlk->instance, vlk->surface, NULL);
   vkDestroyDevice(vlk->device, NULL);
   vkDestroyInstance(vlk->instance, NULL);
+}
+
+void recordCommandBuffer(VkCommandBuffer commandBuffer, VkPipeline pipeline,
+                         VkImageView swapchainImageView) {
+  VkRenderingAttachmentInfo colorAttachment = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+      .imageView = swapchainImageView,
+      .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+      .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+      .clearValue =
+          {
+              .color =
+                  {
+                      .float32 = {0.0f, 0.0f, 0.0f, 1.0f},
+                  },
+          },
+  };
+  VkRenderingInfo renderingInfo = {
+      .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+      .renderArea =
+          {
+              .offset = {0, 0},
+              .extent = {800, 800},
+          },
+      .layerCount = 1,
+      .colorAttachmentCount = 1,
+      .pColorAttachments = &colorAttachment,
+  };
+  vkCmdBeginRendering(commandBuffer, &renderingInfo);
+  vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+  vkCmdEndRendering(commandBuffer);
+}
+
+void draw(VkDevice device, VkSwapchainKHR swapchain,
+          VkImageView* swapchainImageViews, VkCommandBuffer* commandBuffers,
+          VkSemaphore* imageAvailableSemaphores,
+          VkSemaphore* renderFinishedSemaphores, VkFence* inFlight,
+          int currentFrame) {
+  vkWaitForFences(device, 1, &inFlight[currentFrame], VK_TRUE, UINT64_MAX);
+  vkResetFences(device, 1, &inFlight[currentFrame]);
+
+  uint32_t swImageIndex;
+  vkAcquireNextImageKHR(device, swapchain, UINT64_MAX,
+                        imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE,
+                        &swImageIndex);
+  vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+}
+
+void mainLoop(VkDevice device, GLFWwindow* window) {
+  Render render = {
+      .currentFrame = 0,
+  };
+  while (!glfwWindowShouldClose(window)) {
+    glfwPollEvents();
+    glfwSwapBuffers(window);
+  }
+  vkDeviceWaitIdle(device);
 }
 
 int main() {
@@ -331,5 +459,7 @@ int main() {
                                         "sandbox", NULL, NULL);
   vlkInit(&vlk, window);
   vlkDestroy(&vlk);
+  glfwDestroyWindow(window);
+  glfwTerminate();
   return 0;
 }
