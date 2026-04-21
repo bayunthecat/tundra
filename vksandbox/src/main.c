@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
@@ -16,7 +17,7 @@ typedef float vec3[3];
 
 typedef struct {
   int currentFrame;
-  vec3* v;
+  VkBuffer vBuffer;
   int vCount;
 } Render;
 
@@ -100,6 +101,7 @@ void createLogicalDevice(Vlk* vlk) {
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
       .pNext = NULL,
       .dynamicRendering = VK_TRUE,
+      .synchronization2 = VK_TRUE,
   };
   VkDeviceCreateInfo deviceCreateInfo = {
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -342,11 +344,71 @@ void createSyncObjects(VkDevice device, int count,
   }
 }
 
+void copyBuffer(Vlk* vlk, VkBuffer srcBuffer, VkBuffer dstBuffer,
+                VkDeviceSize size) {
+  VkCommandBufferAllocateInfo allocInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandPool = vlk->commandPool,
+      .commandBufferCount = 1,
+  };
+  VkCommandBuffer commandBuffer;
+  vkAllocateCommandBuffers(vlk->device, &allocInfo, &commandBuffer);
+  VkCommandBufferBeginInfo beginInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  VkResult result = vkBeginCommandBuffer(commandBuffer, &beginInfo);
+  if (result != VK_SUCCESS) {
+    printf("failed to begin command buffer\n");
+    exit(1);
+  }
+  VkBufferCopy copyRegion = {
+      .srcOffset = 0,
+      .dstOffset = 0,
+      .size = size,
+  };
+  vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+  vkEndCommandBuffer(commandBuffer);
+  VkSubmitInfo submitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &commandBuffer,
+  };
+  vkQueueSubmit(vlk->queue, 1, &submitInfo, VK_NULL_HANDLE);
+  vkQueueWaitIdle(vlk->queue);
+  vkFreeCommandBuffers(vlk->device, vlk->commandPool, 1, &commandBuffer);
+}
+
+void createVertexBuffer(Vlk* vlk, VkBuffer* buffer, VkDeviceMemory* memory,
+                        vec3* v, int vCount) {
+  VkBuffer stgBuffer;
+  VkDeviceMemory stgMemory;
+  VkDeviceSize bufferSize = sizeof(vec3) * vCount;
+  vlkCreateBuffer(vlk->device, vlk->physicalDevice, bufferSize,
+                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                  &stgBuffer, &stgMemory);
+
+  void* data;
+  vkMapMemory(vlk->device, stgMemory, 0, bufferSize, 0, &data);
+  memcpy(data, v, bufferSize);
+  vkUnmapMemory(vlk->device, stgMemory);
+  vlkCreateBuffer(
+      vlk->device, vlk->physicalDevice, bufferSize,
+      VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, memory);
+  copyBuffer(vlk, stgBuffer, *buffer, bufferSize);
+  vkDestroyBuffer(vlk->device, stgBuffer, NULL);
+  vkFreeMemory(vlk->device, stgMemory, NULL);
+}
+
 void vlkInit(Vlk* vlk, GLFWwindow* window) {
   createInstance(vlk);
   pickPhysicalDevice(vlk);
-  vkGetDeviceQueue(vlk->device, 0, 0, &vlk->queue);
   createLogicalDevice(vlk);
+  vkGetDeviceQueue(vlk->device, 0, 0, &vlk->queue);
   vlkCreateSurface(vlk->instance, window, &vlk->surface);
   vlkCreateSwapchain(vlk->device, vlk->physicalDevice, vlk->extent, vlk->format,
                      vlk->surface, &vlk->swapchain);
@@ -395,8 +457,66 @@ void vlkDestroy(Vlk* vlk) {
   vkDestroyInstance(vlk->instance, NULL);
 }
 
-void recordCommandBuffer(VkCommandBuffer commandBuffer, VkPipeline pipeline,
-                         VkImageView swapchainImageView, Render* render) {
+void toPresent(Vlk* vlk, VkCommandBuffer commandBuffer, int swImageIndex,
+               int currentFrame) {
+  VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+      .dstAccessMask = VK_ACCESS_2_NONE,
+      .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+      .image = vlk->swapchainImages[swImageIndex],
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .baseMipLevel = 0,
+              .levelCount = 1,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+          },
+  };
+  VkDependencyInfo dep = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
+  vkCmdPipelineBarrier2(commandBuffer, &dep);
+}
+
+void toColorAttachment(Vlk* vlk, VkCommandBuffer commandBuffer,
+                       int swImageIndex, int currentFrame) {
+  VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+      .srcAccessMask = VK_ACCESS_2_NONE,
+      .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+      .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .image = vlk->swapchainImages[swImageIndex],
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .baseMipLevel = 0,
+              .levelCount = 1,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+          },
+  };
+  VkDependencyInfo dep = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
+  vkCmdPipelineBarrier2(commandBuffer, &dep);
+}
+
+void recordCommandBuffer(Vlk* vlk, VkCommandBuffer commandBuffer,
+                         VkPipeline pipeline, VkImageView swapchainImageView,
+                         Render* render, int swImageIndex) {
+  vkResetCommandBuffer(commandBuffer, 0);
   VkRenderingAttachmentInfo colorAttachment = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
       .imageView = swapchainImageView,
@@ -422,71 +542,42 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, VkPipeline pipeline,
       .colorAttachmentCount = 1,
       .pColorAttachments = &colorAttachment,
   };
+  VkCommandBufferBeginInfo beginInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  vkBeginCommandBuffer(commandBuffer, &beginInfo);
+  toColorAttachment(vlk, commandBuffer, swImageIndex, render->currentFrame);
   vkCmdBeginRendering(commandBuffer, &renderingInfo);
   vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+  VkViewport viewport = {
+      .x = 0.0f,
+      .y = 0.0f,
+      .width = vlk->extent.width,
+      .height = vlk->extent.height,
+      .minDepth = 0.0f,
+      .maxDepth = 1.0f,
+  };
+  vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+  VkOffset2D offset = {0};
+  VkRect2D scissor = {
+      .extent = vlk->extent,
+      .offset = offset,
+  };
+  vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+  VkDeviceSize offsets[] = {0};
+  vkCmdBindVertexBuffers(commandBuffer, 0, 1, &render->vBuffer, offsets);
   vkCmdDraw(commandBuffer, render->vCount, 1, 0, 0);
   vkCmdEndRendering(commandBuffer);
+  toPresent(vlk, commandBuffer, swImageIndex, render->currentFrame);
+  vkEndCommandBuffer(commandBuffer);
 }
 
-void toPresent(Vlk* vlk, int swImageIndex, int currentFrame) {
-  VkImageMemoryBarrier2 barrier = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-      .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-      .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-      .dstAccessMask = VK_ACCESS_2_NONE,
-      .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-      .image = vlk->swapchainImages[swImageIndex],
-      .subresourceRange =
-          {
-              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .baseMipLevel = 0,
-              .levelCount = 1,
-              .baseArrayLayer = 0,
-              .layerCount = 1,
-          },
-  };
-  VkDependencyInfo dep = {
-      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .imageMemoryBarrierCount = 1,
-      .pImageMemoryBarriers = &barrier,
-  };
-  vkCmdPipelineBarrier2(vlk->commandBuffers[currentFrame], &dep);
-}
-
-void toColorAttachment(Vlk* vlk, int swImageIndex, int currentFrame) {
-  VkImageMemoryBarrier2 barrier = {
-      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-      .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-      .srcAccessMask = VK_ACCESS_2_NONE,
-      .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-      .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-      .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-      .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-      .image = vlk->swapchainImages[swImageIndex],
-      .subresourceRange =
-          {
-              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-              .baseMipLevel = 0,
-              .levelCount = 1,
-              .baseArrayLayer = 0,
-              .layerCount = 1,
-          },
-  };
-  VkDependencyInfo dep = {
-      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-      .imageMemoryBarrierCount = 1,
-      .pImageMemoryBarriers = &barrier,
-  };
-  vkCmdPipelineBarrier2(vlk->commandBuffers[currentFrame], &dep);
-}
-
-inline void present(Vlk* vlk, int swImageIndex, int currentFrame) {
+void present(Vlk* vlk, int swImageIndex, int currentFrame) {
   const uint32_t imgIdx = (uint32_t)swImageIndex;
   VkPresentInfoKHR info = {
       .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-      .pWaitSemaphores = &vlk->renderSemaphore[currentFrame],
+      .pWaitSemaphores = &vlk->renderSemaphore[swImageIndex],
       .waitSemaphoreCount = 1,
       .pSwapchains = &vlk->swapchain,
       .swapchainCount = 1,
@@ -511,7 +602,7 @@ void submit(Vlk* vlk, int swImageIndex, int currentFrame) {
   };
   VkSemaphoreSubmitInfo signalInfo = {
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-      .semaphore = vlk->renderSemaphore[currentFrame],
+      .semaphore = vlk->renderSemaphore[swImageIndex],
       .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
   };
   VkSubmitInfo2 submitInfo = {
@@ -524,7 +615,7 @@ void submit(Vlk* vlk, int swImageIndex, int currentFrame) {
       .pSignalSemaphoreInfos = &signalInfo,
   };
   VkResult result = vkQueueSubmit2(vlk->queue, 1, &submitInfo,
-                                   vlk->inFlightFences[swImageIndex]);
+                                   vlk->inFlightFences[currentFrame]);
   if (result != VK_SUCCESS) {
     printf("submit failed: %d\n", result);
     exit(1);
@@ -540,11 +631,9 @@ void draw(Vlk* vlk, Render* render) {
   vkAcquireNextImageKHR(vlk->device, vlk->swapchain, UINT64_MAX,
                         vlk->acquireSemaphore[render->currentFrame],
                         VK_NULL_HANDLE, &swImageIndex);
-  toColorAttachment(vlk, swImageIndex, render->currentFrame);
-  vkResetCommandBuffer(vlk->commandBuffers[render->currentFrame], 0);
-  recordCommandBuffer(vlk->commandBuffers[render->currentFrame], vlk->pipeline,
-                      vlk->swapchainImageViews[swImageIndex], render);
-  toPresent(vlk, swImageIndex, render->currentFrame);
+  recordCommandBuffer(vlk, vlk->commandBuffers[render->currentFrame],
+                      vlk->pipeline, vlk->swapchainImageViews[swImageIndex],
+                      render, swImageIndex);
   submit(vlk, swImageIndex, render->currentFrame);
   present(vlk, swImageIndex, render->currentFrame);
   render->currentFrame = (render->currentFrame + 1) % vlk->swapchainImageCount;
@@ -558,15 +647,19 @@ void mainLoop(Vlk* vlk, GLFWwindow* window) {
   };
   Render render = {
       .currentFrame = 0,
-      .v = vertices,
       .vCount = 3,
+      .vBuffer = VK_NULL_HANDLE,
   };
+  VkDeviceMemory vBufMem;
+  createVertexBuffer(vlk, &render.vBuffer, &vBufMem, vertices, 3);
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
     draw(vlk, &render);
     glfwSwapBuffers(window);
   }
   vkDeviceWaitIdle(vlk->device);
+  vkDestroyBuffer(vlk->device, render.vBuffer, NULL);
+  vkFreeMemory(vlk->device, vBufMem, NULL);
 }
 
 int main() {
