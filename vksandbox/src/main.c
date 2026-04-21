@@ -12,13 +12,18 @@
 
 #define SW_SLOTS 10
 
+typedef float vec3[3];
+
 typedef struct {
   int currentFrame;
+  vec3* v;
+  int vCount;
 } Render;
 
 typedef struct {
   VkInstance instance;
   VkPhysicalDevice physicalDevice;
+  VkQueue queue;
   VkDevice device;
   VkSurfaceKHR surface;
   VkFormat format;
@@ -32,8 +37,8 @@ typedef struct {
   VkPipeline pipeline;
   VkCommandPool commandPool;
   VkCommandBuffer commandBuffers[SW_SLOTS];
-  VkSemaphore imageAvailableSemaphores[SW_SLOTS];
-  VkSemaphore renderFinishedSemaphores[SW_SLOTS];
+  VkSemaphore acquireSemaphore[SW_SLOTS];
+  VkSemaphore renderSemaphore[SW_SLOTS];
   VkFence inFlightFences[SW_SLOTS];
 } Vlk;
 
@@ -340,6 +345,7 @@ void createSyncObjects(VkDevice device, int count,
 void vlkInit(Vlk* vlk, GLFWwindow* window) {
   createInstance(vlk);
   pickPhysicalDevice(vlk);
+  vkGetDeviceQueue(vlk->device, 0, 0, &vlk->queue);
   createLogicalDevice(vlk);
   vlkCreateSurface(vlk->instance, window, &vlk->surface);
   vlkCreateSwapchain(vlk->device, vlk->physicalDevice, vlk->extent, vlk->format,
@@ -354,8 +360,8 @@ void vlkInit(Vlk* vlk, GLFWwindow* window) {
   createCommandBuffers(vlk->device, vlk->commandPool, vlk->swapchainImageCount,
                        vlk->commandBuffers);
   createSyncObjects(vlk->device, vlk->swapchainImageCount,
-                    vlk->imageAvailableSemaphores,
-                    vlk->renderFinishedSemaphores, vlk->inFlightFences);
+                    vlk->acquireSemaphore, vlk->renderSemaphore,
+                    vlk->inFlightFences);
 }
 
 void destroySemaphores(VkDevice device, int count, VkSemaphore* semaphores) {
@@ -375,9 +381,9 @@ void vlkDestroy(Vlk* vlk) {
     vkDestroyImageView(vlk->device, vlk->swapchainImageViews[i], NULL);
   }
   destroySemaphores(vlk->device, vlk->swapchainImageCount,
-                    vlk->imageAvailableSemaphores);
+                    vlk->acquireSemaphore);
   destroySemaphores(vlk->device, vlk->swapchainImageCount,
-                    vlk->renderFinishedSemaphores);
+                    vlk->renderSemaphore);
   destroyFences(vlk->device, vlk->swapchainImageCount, vlk->inFlightFences);
   vkDestroyCommandPool(vlk->device, vlk->commandPool, NULL);
   vkDestroyDescriptorSetLayout(vlk->device, vlk->descriptorSetLayout, NULL);
@@ -390,7 +396,7 @@ void vlkDestroy(Vlk* vlk) {
 }
 
 void recordCommandBuffer(VkCommandBuffer commandBuffer, VkPipeline pipeline,
-                         VkImageView swapchainImageView) {
+                         VkImageView swapchainImageView, Render* render) {
   VkRenderingAttachmentInfo colorAttachment = {
       .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
       .imageView = swapchainImageView,
@@ -418,33 +424,149 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, VkPipeline pipeline,
   };
   vkCmdBeginRendering(commandBuffer, &renderingInfo);
   vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+  vkCmdDraw(commandBuffer, render->vCount, 1, 0, 0);
   vkCmdEndRendering(commandBuffer);
 }
 
-void draw(VkDevice device, VkSwapchainKHR swapchain,
-          VkImageView* swapchainImageViews, VkCommandBuffer* commandBuffers,
-          VkSemaphore* imageAvailableSemaphores,
-          VkSemaphore* renderFinishedSemaphores, VkFence* inFlight,
-          int currentFrame) {
-  vkWaitForFences(device, 1, &inFlight[currentFrame], VK_TRUE, UINT64_MAX);
-  vkResetFences(device, 1, &inFlight[currentFrame]);
-
-  uint32_t swImageIndex;
-  vkAcquireNextImageKHR(device, swapchain, UINT64_MAX,
-                        imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE,
-                        &swImageIndex);
-  vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+void toPresent(Vlk* vlk, int swImageIndex, int currentFrame) {
+  VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+      .dstAccessMask = VK_ACCESS_2_NONE,
+      .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+      .image = vlk->swapchainImages[swImageIndex],
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .baseMipLevel = 0,
+              .levelCount = 1,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+          },
+  };
+  VkDependencyInfo dep = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
+  vkCmdPipelineBarrier2(vlk->commandBuffers[currentFrame], &dep);
 }
 
-void mainLoop(VkDevice device, GLFWwindow* window) {
+void toColorAttachment(Vlk* vlk, int swImageIndex, int currentFrame) {
+  VkImageMemoryBarrier2 barrier = {
+      .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+      .srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+      .srcAccessMask = VK_ACCESS_2_NONE,
+      .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+      .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+      .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+      .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+      .image = vlk->swapchainImages[swImageIndex],
+      .subresourceRange =
+          {
+              .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+              .baseMipLevel = 0,
+              .levelCount = 1,
+              .baseArrayLayer = 0,
+              .layerCount = 1,
+          },
+  };
+  VkDependencyInfo dep = {
+      .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .imageMemoryBarrierCount = 1,
+      .pImageMemoryBarriers = &barrier,
+  };
+  vkCmdPipelineBarrier2(vlk->commandBuffers[currentFrame], &dep);
+}
+
+inline void present(Vlk* vlk, int swImageIndex, int currentFrame) {
+  const uint32_t imgIdx = (uint32_t)swImageIndex;
+  VkPresentInfoKHR info = {
+      .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+      .pWaitSemaphores = &vlk->renderSemaphore[currentFrame],
+      .waitSemaphoreCount = 1,
+      .pSwapchains = &vlk->swapchain,
+      .swapchainCount = 1,
+      .pImageIndices = &imgIdx,
+  };
+  VkResult result = vkQueuePresentKHR(vlk->queue, &info);
+  if (result != VK_SUCCESS) {
+    printf("present failed: %d\n", result);
+    exit(1);
+  }
+}
+
+void submit(Vlk* vlk, int swImageIndex, int currentFrame) {
+  VkCommandBufferSubmitInfo commandBufferInfo = {
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+      .commandBuffer = vlk->commandBuffers[currentFrame],
+  };
+  VkSemaphoreSubmitInfo waitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+      .semaphore = vlk->acquireSemaphore[currentFrame],
+      .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+  };
+  VkSemaphoreSubmitInfo signalInfo = {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+      .semaphore = vlk->renderSemaphore[currentFrame],
+      .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+  };
+  VkSubmitInfo2 submitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+      .commandBufferInfoCount = 1,
+      .pCommandBufferInfos = &commandBufferInfo,
+      .waitSemaphoreInfoCount = 1,
+      .pWaitSemaphoreInfos = &waitInfo,
+      .signalSemaphoreInfoCount = 1,
+      .pSignalSemaphoreInfos = &signalInfo,
+  };
+  VkResult result = vkQueueSubmit2(vlk->queue, 1, &submitInfo,
+                                   vlk->inFlightFences[swImageIndex]);
+  if (result != VK_SUCCESS) {
+    printf("submit failed: %d\n", result);
+    exit(1);
+  }
+}
+
+void draw(Vlk* vlk, Render* render) {
+  vkWaitForFences(vlk->device, 1, &vlk->inFlightFences[render->currentFrame],
+                  VK_TRUE, UINT64_MAX);
+  vkResetFences(vlk->device, 1, &vlk->inFlightFences[render->currentFrame]);
+
+  uint32_t swImageIndex;
+  vkAcquireNextImageKHR(vlk->device, vlk->swapchain, UINT64_MAX,
+                        vlk->acquireSemaphore[render->currentFrame],
+                        VK_NULL_HANDLE, &swImageIndex);
+  toColorAttachment(vlk, swImageIndex, render->currentFrame);
+  vkResetCommandBuffer(vlk->commandBuffers[render->currentFrame], 0);
+  recordCommandBuffer(vlk->commandBuffers[render->currentFrame], vlk->pipeline,
+                      vlk->swapchainImageViews[swImageIndex], render);
+  toPresent(vlk, swImageIndex, render->currentFrame);
+  submit(vlk, swImageIndex, render->currentFrame);
+  present(vlk, swImageIndex, render->currentFrame);
+  render->currentFrame = (render->currentFrame + 1) % vlk->swapchainImageCount;
+}
+
+void mainLoop(Vlk* vlk, GLFWwindow* window) {
+  vec3 vertices[3] = {
+      {0.25f, 0.25f, 0.5f},
+      {0.5f, 0.5f, 0.5f},
+      {0.25f, 0.5f, 0.5f},
+  };
   Render render = {
       .currentFrame = 0,
+      .v = vertices,
+      .vCount = 3,
   };
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
+    draw(vlk, &render);
     glfwSwapBuffers(window);
   }
-  vkDeviceWaitIdle(device);
+  vkDeviceWaitIdle(vlk->device);
 }
 
 int main() {
@@ -458,6 +580,7 @@ int main() {
   GLFWwindow* window = glfwCreateWindow(vlk.extent.width, vlk.extent.height,
                                         "sandbox", NULL, NULL);
   vlkInit(&vlk, window);
+  mainLoop(&vlk, window);
   vlkDestroy(&vlk);
   glfwDestroyWindow(window);
   glfwTerminate();
