@@ -94,7 +94,7 @@ void createLogicalDevice(Vlk* vlk) {
   };
   VkPhysicalDeviceFeatures features = {
       .samplerAnisotropy = VK_TRUE,
-
+      .largePoints = VK_TRUE,
   };
   const char** ext = (const char*[]){VK_KHR_SWAPCHAIN_EXTENSION_NAME};
   VkPhysicalDeviceVulkan13Features features13 = {
@@ -190,7 +190,7 @@ void createGraphicsPipeline(Vlk* vlk) {
   };
   VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-      .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+      .topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST,
       .primitiveRestartEnable = VK_FALSE,
   };
   VkViewport viewport = {
@@ -640,18 +640,16 @@ void draw(Vlk* vlk, Render* render) {
 }
 
 void mainLoop(Vlk* vlk, GLFWwindow* window) {
-  vec3 vertices[3] = {
-      {0.25f, 0.25f, 0.5f},
-      {0.5f, 0.5f, 0.5f},
-      {0.25f, 0.5f, 0.5f},
+  vec3 vertices[1] = {
+      {1.0f, 0.0f, 0.0f},
   };
   Render render = {
       .currentFrame = 0,
-      .vCount = 3,
+      .vCount = 1,
       .vBuffer = VK_NULL_HANDLE,
   };
   VkDeviceMemory vBufMem;
-  createVertexBuffer(vlk, &render.vBuffer, &vBufMem, vertices, 3);
+  createVertexBuffer(vlk, &render.vBuffer, &vBufMem, vertices, 1);
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
     draw(vlk, &render);
