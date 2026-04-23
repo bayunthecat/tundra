@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <vulkan/vulkan_core.h>
 
 #include "vlk_resources.h"
@@ -17,8 +18,12 @@ typedef float vec3[3];
 
 typedef struct {
   int currentFrame;
+  VkDeviceMemory vBufferMemoryList[SW_SLOTS];
+  VkBuffer vBuffers[SW_SLOTS];
+  void* vBufferMapped[SW_SLOTS];
   VkBuffer vBuffer;
   int vCount;
+  clock_t start;
 } Render;
 
 typedef struct {
@@ -380,6 +385,17 @@ void copyBuffer(Vlk* vlk, VkBuffer srcBuffer, VkBuffer dstBuffer,
   vkFreeCommandBuffers(vlk->device, vlk->commandPool, 1, &commandBuffer);
 }
 
+void createWritableVertexBuffer(Vlk* vlk, VkBuffer* buffer,
+                                VkDeviceMemory* memory, VkDeviceSize size,
+                                void** mapped) {
+  vlkCreateBuffer(vlk->device, vlk->physicalDevice, size,
+                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                  buffer, memory);
+  vkMapMemory(vlk->device, *memory, 0, size, 0, mapped);
+}
+
 void createVertexBuffer(Vlk* vlk, VkBuffer* buffer, VkDeviceMemory* memory,
                         vec3* v, int vCount) {
   VkBuffer stgBuffer;
@@ -566,7 +582,8 @@ void recordCommandBuffer(Vlk* vlk, VkCommandBuffer commandBuffer,
   };
   vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
   VkDeviceSize offsets[] = {0};
-  vkCmdBindVertexBuffers(commandBuffer, 0, 1, &render->vBuffer, offsets);
+  vkCmdBindVertexBuffers(commandBuffer, 0, 1, &render->vBuffers[swImageIndex],
+                         offsets);
   vkCmdDraw(commandBuffer, render->vCount, 1, 0, 0);
   vkCmdEndRendering(commandBuffer);
   toPresent(vlk, commandBuffer, swImageIndex, render->currentFrame);
@@ -622,6 +639,28 @@ void submit(Vlk* vlk, int swImageIndex, int currentFrame) {
   }
 }
 
+void project(Render* render, void* vertices) {
+  clock_t curr = clock();
+  double t = (double)(curr - render->start) / CLOCKS_PER_SEC;
+  float speed = 0.4f;
+  vec3* v = vertices;
+  float x = 1.0, y = 0.0, z = 0.1;
+  z = z + (speed * t);
+  x = x / z;
+  y = y / z;
+  v[0][0] = x;
+  v[0][1] = y;
+  v[0][2] = z;
+}
+
+void updateVertices(Render* render, void* vertices) {
+  clock_t curr = clock();
+  double t = (double)(curr - render->start) / CLOCKS_PER_SEC;
+  float speed = 0.4f;
+  vec3* v = vertices;
+  v[0][0] = 1.0f - (speed * t);
+}
+
 void draw(Vlk* vlk, Render* render) {
   vkWaitForFences(vlk->device, 1, &vlk->inFlightFences[render->currentFrame],
                   VK_TRUE, UINT64_MAX);
@@ -631,6 +670,8 @@ void draw(Vlk* vlk, Render* render) {
   vkAcquireNextImageKHR(vlk->device, vlk->swapchain, UINT64_MAX,
                         vlk->acquireSemaphore[render->currentFrame],
                         VK_NULL_HANDLE, &swImageIndex);
+  // updateVertices(render, render->vBufferMapped[swImageIndex]);
+  project(render, render->vBufferMapped[swImageIndex]);
   recordCommandBuffer(vlk, vlk->commandBuffers[render->currentFrame],
                       vlk->pipeline, vlk->swapchainImageViews[swImageIndex],
                       render, swImageIndex);
@@ -639,25 +680,41 @@ void draw(Vlk* vlk, Render* render) {
   render->currentFrame = (render->currentFrame + 1) % vlk->swapchainImageCount;
 }
 
+void createWritableVBuffers(Vlk* vlk, Render* render) {
+  VkDeviceSize size = sizeof(vec3);
+  vec3 v = {1.0f, 0.0f, 0.1f};
+  for (int i = 0; i < vlk->swapchainImageCount; i++) {
+    createWritableVertexBuffer(vlk, &render->vBuffers[i],
+                               &render->vBufferMemoryList[i], size,
+                               &render->vBufferMapped[i]);
+    memcpy(render->vBufferMapped[i], &v, sizeof(vec3));
+  }
+}
+
+void freeBuffers(VkDevice device, VkBuffer* buffers, VkDeviceMemory* memories,
+                 int count) {
+  for (int i = 0; i < count; i++) {
+    vkDestroyBuffer(device, buffers[i], NULL);
+    vkFreeMemory(device, memories[i], NULL);
+  }
+}
+
 void mainLoop(Vlk* vlk, GLFWwindow* window) {
-  vec3 vertices[1] = {
-      {1.0f, 0.0f, 0.0f},
-  };
   Render render = {
       .currentFrame = 0,
       .vCount = 1,
       .vBuffer = VK_NULL_HANDLE,
+      .start = clock(),
   };
-  VkDeviceMemory vBufMem;
-  createVertexBuffer(vlk, &render.vBuffer, &vBufMem, vertices, 1);
+  createWritableVBuffers(vlk, &render);
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
     draw(vlk, &render);
     glfwSwapBuffers(window);
   }
   vkDeviceWaitIdle(vlk->device);
-  vkDestroyBuffer(vlk->device, render.vBuffer, NULL);
-  vkFreeMemory(vlk->device, vBufMem, NULL);
+  freeBuffers(vlk->device, render.vBuffers, render.vBufferMemoryList,
+              vlk->swapchainImageCount);
 }
 
 int main() {

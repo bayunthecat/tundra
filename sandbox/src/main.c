@@ -1,11 +1,19 @@
-#include <GLFW/glfw3.h>
-#include <stddef.h>
-#include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
 
 int main() {
-  int* i = malloc(sizeof(int));
-  glfwInit();
-  GLFWwindow* window = glfwCreateWindow(800, 600, "test", NULL, NULL);
-  glfwDestroyWindow(window);
-  glfwTerminate();
+  clock_t start = clock();
+  clock_t end;
+  int printed = 0;
+  double curr = 0;
+  int currInt = 0;
+  for (int i = 0;; i++) {
+    end = clock();
+    curr = (double)(end - start) / CLOCKS_PER_SEC;
+    currInt = (int)curr;
+    if (currInt != printed) {
+      printf("elapsed: %f\n", curr);
+      printed = currInt;
+    }
+  }
 }
