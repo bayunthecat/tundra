@@ -1,4 +1,6 @@
 #include <GLFW/glfw3.h>
+#include <bits/time.h>
+#include <bits/types/stack_t.h>
 #include <cglm/types.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -23,7 +25,7 @@ typedef struct {
   void* vBufferMapped[SW_SLOTS];
   VkBuffer vBuffer;
   int vCount;
-  clock_t start;
+  struct timespec start;
 } Render;
 
 typedef struct {
@@ -639,26 +641,27 @@ void submit(Vlk* vlk, int swImageIndex, int currentFrame) {
   }
 }
 
+static inline double sec(struct timespec t) {
+  return t.tv_sec + (double)t.tv_nsec / 1e9;
+}
+
+static inline double dt(struct timespec curr, struct timespec start) {
+  return sec(curr) - sec(start);
+}
+
 void project(Render* render, void* vertices) {
-  clock_t curr = clock();
-  double t = (double)(curr - render->start) / CLOCKS_PER_SEC;
+  struct timespec curr;
+  clock_gettime(CLOCK_MONOTONIC, &curr);
+  double t = dt(curr, render->start);
   float speed = 0.4f;
   vec3* v = vertices;
-  float x = 1.0, y = 0.0, z = 0.1;
+  float x = 1.0, y = 0.0, z = 1.0;
   z = z + (speed * t);
   x = x / z;
   y = y / z;
   v[0][0] = x;
   v[0][1] = y;
   v[0][2] = z;
-}
-
-void updateVertices(Render* render, void* vertices) {
-  clock_t curr = clock();
-  double t = (double)(curr - render->start) / CLOCKS_PER_SEC;
-  float speed = 0.4f;
-  vec3* v = vertices;
-  v[0][0] = 1.0f - (speed * t);
 }
 
 void draw(Vlk* vlk, Render* render) {
@@ -670,7 +673,6 @@ void draw(Vlk* vlk, Render* render) {
   vkAcquireNextImageKHR(vlk->device, vlk->swapchain, UINT64_MAX,
                         vlk->acquireSemaphore[render->currentFrame],
                         VK_NULL_HANDLE, &swImageIndex);
-  // updateVertices(render, render->vBufferMapped[swImageIndex]);
   project(render, render->vBufferMapped[swImageIndex]);
   recordCommandBuffer(vlk, vlk->commandBuffers[render->currentFrame],
                       vlk->pipeline, vlk->swapchainImageViews[swImageIndex],
@@ -704,9 +706,9 @@ void mainLoop(Vlk* vlk, GLFWwindow* window) {
       .currentFrame = 0,
       .vCount = 1,
       .vBuffer = VK_NULL_HANDLE,
-      .start = clock(),
   };
   createWritableVBuffers(vlk, &render);
+  clock_gettime(CLOCK_MONOTONIC, &render.start);
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
     draw(vlk, &render);
