@@ -24,6 +24,7 @@ typedef struct {
   VkBuffer vBuffers[SW_SLOTS];
   void* vBufferMapped[SW_SLOTS];
   VkBuffer vBuffer;
+  vec3* v;
   int vCount;
   struct timespec start;
 } Render;
@@ -655,13 +656,14 @@ void project(Render* render, void* vertices) {
   double t = dt(curr, render->start);
   float speed = 0.4f;
   vec3* v = vertices;
-  float x = 1.0, y = 0.0, z = 1.0;
-  z = z + (speed * t);
-  x = x / z;
-  y = y / z;
-  v[0][0] = x;
-  v[0][1] = y;
-  v[0][2] = z;
+  for (int i = 0; i < render->vCount; i++) {
+    float z = render->v[i][2] + (speed * t);
+    float x = render->v[i][0] / z;
+    float y = render->v[i][1] / z;
+    v[i][0] = x;
+    v[i][1] = y;
+    v[i][2] = z;
+  }
 }
 
 void draw(Vlk* vlk, Render* render) {
@@ -683,13 +685,12 @@ void draw(Vlk* vlk, Render* render) {
 }
 
 void createWritableVBuffers(Vlk* vlk, Render* render) {
-  VkDeviceSize size = sizeof(vec3);
-  vec3 v = {1.0f, 0.0f, 0.1f};
+  VkDeviceSize size = sizeof(vec3) * render->vCount;
   for (int i = 0; i < vlk->swapchainImageCount; i++) {
     createWritableVertexBuffer(vlk, &render->vBuffers[i],
                                &render->vBufferMemoryList[i], size,
                                &render->vBufferMapped[i]);
-    memcpy(render->vBufferMapped[i], &v, sizeof(vec3));
+    memcpy(render->vBufferMapped[i], render->v, size);
   }
 }
 
@@ -702,9 +703,13 @@ void freeBuffers(VkDevice device, VkBuffer* buffers, VkDeviceMemory* memories,
 }
 
 void mainLoop(Vlk* vlk, GLFWwindow* window) {
+  float z = 0.5f;
+  vec3 v[] = {
+      {1.0f, 1.0f, z}, {-1.0f, 1.0f, z}, {-1.0f, -1.0f, z}, {1.0f, -1.0f, z}};
   Render render = {
       .currentFrame = 0,
-      .vCount = 1,
+      .vCount = 4,
+      .v = v,
       .vBuffer = VK_NULL_HANDLE,
   };
   createWritableVBuffers(vlk, &render);
