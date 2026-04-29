@@ -2,6 +2,7 @@
 #include <bits/time.h>
 #include <bits/types/stack_t.h>
 #include <cglm/types.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,7 +24,6 @@ typedef struct {
   VkDeviceMemory vBufferMemoryList[SW_SLOTS];
   VkBuffer vBuffers[SW_SLOTS];
   void* vBufferMapped[SW_SLOTS];
-  VkBuffer vBuffer;
   vec3* v;
   int vCount;
   struct timespec start;
@@ -650,19 +650,43 @@ static inline double dt(struct timespec curr, struct timespec start) {
   return sec(curr) - sec(start);
 }
 
-void project(Render* render, void* vertices) {
+static inline void rotateXY(vec3 p, vec3 origin, float angle) {
+  double rads = angle * (M_PI / 180.0f);
+  float x = origin[0];
+  float y = origin[1];
+  p[0] = x * cos(rads) - y * sin(rads);
+  p[1] = x * sin(rads) + y * cos(rads);
+  p[2] = origin[2];
+}
+
+static inline void rotateXZ(vec3 p, vec3 origin, float angle) {
+  double rads = angle * (M_PI / 180.0f);
+  float x = origin[0];
+  float z = origin[2];
+  p[0] = x * cos(rads) - z * sin(rads);
+  p[1] = origin[1];
+  p[2] = x * sin(rads) + z * cos(rads);
+}
+
+static inline void project(vec3 p, vec3 origin, float dz) {
+  p[0] = origin[0] / dz;
+  p[1] = origin[1] / dz;
+  p[2] = origin[2] + dz;
+}
+
+void updateBuffers(Render* render, void* vertices) {
   struct timespec curr;
   clock_gettime(CLOCK_MONOTONIC, &curr);
   double t = dt(curr, render->start);
-  float speed = 0.4f;
+  float speed = 0.2f;
+  float rotateSpeed = 180.0f;
   vec3* v = vertices;
+  float dz = speed * t;
+  float da = rotateSpeed * t;
   for (int i = 0; i < render->vCount; i++) {
-    float z = render->v[i][2] + (speed * t);
-    float x = render->v[i][0] / z;
-    float y = render->v[i][1] / z;
-    v[i][0] = x;
-    v[i][1] = y;
-    v[i][2] = z;
+    rotateXZ(v[i], render->v[i], da);
+    rotateXY(v[i], v[i], da);
+    project(v[i], v[i], dz);
   }
 }
 
@@ -675,7 +699,7 @@ void draw(Vlk* vlk, Render* render) {
   vkAcquireNextImageKHR(vlk->device, vlk->swapchain, UINT64_MAX,
                         vlk->acquireSemaphore[render->currentFrame],
                         VK_NULL_HANDLE, &swImageIndex);
-  project(render, render->vBufferMapped[swImageIndex]);
+  updateBuffers(render, render->vBufferMapped[swImageIndex]);
   recordCommandBuffer(vlk, vlk->commandBuffers[render->currentFrame],
                       vlk->pipeline, vlk->swapchainImageViews[swImageIndex],
                       render, swImageIndex);
@@ -703,14 +727,18 @@ void freeBuffers(VkDevice device, VkBuffer* buffers, VkDeviceMemory* memories,
 }
 
 void mainLoop(Vlk* vlk, GLFWwindow* window) {
-  float z = 0.5f;
   vec3 v[] = {
-      {1.0f, 1.0f, z}, {-1.0f, 1.0f, z}, {-1.0f, -1.0f, z}, {1.0f, -1.0f, z}};
+      {0.5f, 0.5f, 0.5f},    {-0.5f, 0.5f, 0.5f},
+      {-0.5f, -0.5f, 0.5f},  {0.5f, -0.5f, 0.5f},
+
+      {0.5f, 0.5f, -0.5f},   {-0.5f, 0.5f, -0.5f},
+      {-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f},
+
+  };
   Render render = {
       .currentFrame = 0,
-      .vCount = 4,
+      .vCount = 8,
       .v = v,
-      .vBuffer = VK_NULL_HANDLE,
   };
   createWritableVBuffers(vlk, &render);
   clock_gettime(CLOCK_MONOTONIC, &render.start);
